@@ -1,6 +1,6 @@
 package com.example.subtitleoverlay;
 
-import android.media.MediaController;
+import android.media.session.MediaController;
 import android.media.MediaMetadata;
 import android.media.session.MediaSessionManager;
 import android.os.Bundle;
