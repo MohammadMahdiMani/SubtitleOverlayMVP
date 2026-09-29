@@ -1,8 +1,68 @@
 package com.example.subtitleoverlay;
-import android.accessibilityservice.AccessibilityService;import android.view.accessibility.*;import java.util.regex.*;
-public class SubtitleAccessibilityService extends AccessibilityService{
- public void onAccessibilityEvent(AccessibilityEvent e){AccessibilityNodeInfo r=getRootInActiveWindow();if(r!=null){long v=find(r);r.recycle();if(v>=0)OverlayService.setExternal(v);}}
- long find(AccessibilityNodeInfo n){long best=-1;CharSequence[] a={n.getText(),n.getContentDescription()};for(CharSequence x:a)if(x!=null)best=Math.max(best,parse(x.toString()));for(int i=0;i<n.getChildCount();i++){AccessibilityNodeInfo c=n.getChild(i);if(c!=null){best=Math.max(best,find(c));c.recycle();}}return best;}
- long parse(String s){Matcher m=Pattern.compile("(?<!\\d)(\\d{1,2}):(\\d{2})(?::(\\d{2}))?(?!\\d)").matcher(s);long best=-1;while(m.find())try{long a=Long.parseLong(m.group(1)),b=Long.parseLong(m.group(2)),c=m.group(3)==null?0:Long.parseLong(m.group(3));long ms=m.group(3)==null?a*60000+b:a*3600000+b*60000+c;if((m.group(3)==null?b:c)<60&&(m.group(3)==null||b<60))best=Math.max(best,ms);}catch(Exception ignored){}return best;}
- public void onInterrupt(){}
+
+import android.accessibilityservice.AccessibilityService;
+import android.view.accessibility.AccessibilityNodeInfo;
+import android.view.accessibility.AccessibilityEvent;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public class SubtitleAccessibilityService extends AccessibilityService {
+    private static volatile String activePackage;
+    private static final Pattern TIME = Pattern.compile("(?<!\\d)(\\d{1,2}):(\\d{2})(?::(\\d{2}))?(?!\\d)");
+
+    public static String getActivePackage() { return activePackage; }
+
+    @Override public void onAccessibilityEvent(AccessibilityEvent e) {
+        if (e.getPackageName() != null) activePackage = e.getPackageName().toString();
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return;
+        try {
+            long range = findRangePosition(root);
+            if (range >= 0) { OverlayService.setAccessibilityPosition(range); return; }
+            long text = findLikelyCurrentTime(root);
+            if (text >= 0) OverlayService.setAccessibilityPosition(text);
+        } finally { root.recycle(); }
+    }
+
+    private long findRangePosition(AccessibilityNodeInfo n) {
+        if (n.getRangeInfo() != null) {
+            AccessibilityNodeInfo.RangeInfo r = n.getRangeInfo();
+            float current = r.getCurrent();
+            float max = r.getMax();
+            CharSequence cls = n.getClassName();
+            if (current >= 0 && max > 0 && (cls == null || cls.toString().toLowerCase().contains("seek"))) {
+                // HTML/media seek bars normally expose seconds as their range.
+                if (max > 120) return (long)(current * 1000f);
+            }
+        }
+        for (int i=0;i<n.getChildCount();i++) {
+            AccessibilityNodeInfo c=n.getChild(i);
+            if(c!=null){ long v=findRangePosition(c); c.recycle(); if(v>=0)return v; }
+        }
+        return -1;
+    }
+
+    private long findLikelyCurrentTime(AccessibilityNodeInfo n) {
+        long best = -1;
+        CharSequence[] a={n.getText(),n.getContentDescription()};
+        for(CharSequence x:a) if(x!=null){ long v=parseFirst(x.toString()); if(v>=0){best=v;break;} }
+        for(int i=0;i<n.getChildCount() && best<0;i++){
+            AccessibilityNodeInfo c=n.getChild(i);
+            if(c!=null){best=findLikelyCurrentTime(c);c.recycle();}
+        }
+        return best;
+    }
+
+    private long parseFirst(String s){
+        Matcher m=TIME.matcher(s);
+        if(!m.find()) return -1;
+        try{
+            long a=Long.parseLong(m.group(1)), b=Long.parseLong(m.group(2));
+            if(m.group(3)==null) return a*60000+b*1000;
+            long c=Long.parseLong(m.group(3));
+            if(b>=60 || c>=60)return -1;
+            return a*3600000+b*60000+c*1000;
+        }catch(Exception ignored){return -1;}
+    }
+    @Override public void onInterrupt() {}
 }

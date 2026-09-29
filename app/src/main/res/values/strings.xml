@@ -1,1 +1,4 @@
-<resources><string name="app_name">Subtitle Overlay MVP</string><string name="accessibility_description">Reads visible player time from the active window to synchronize subtitles.</string></resources>
+<resources>
+    <string name="app_name">Subtitle Overlay</string>
+    <string name="accessibility_description">Reads exposed video playback controls such as the current seek position to synchronize subtitles. It does not read video frames.</string>
+</resources>
