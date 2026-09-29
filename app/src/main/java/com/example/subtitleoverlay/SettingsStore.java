@@ -24,6 +24,8 @@ public final class SettingsStore {
     public static void offset(Context c,long v){ c.getSharedPreferences(PREF,0).edit().putLong("offset",v).apply(); }
     public static float speed(Context c){ return c.getSharedPreferences(PREF,0).getFloat("speed",1f); }
     public static void speed(Context c,float v){ c.getSharedPreferences(PREF,0).edit().putFloat("speed", clamp(v,.25f,3f)).apply(); }
+    public static String libraryTree(Context c) { return c.getSharedPreferences(PREF,0).getString("library_tree", ""); }
+    public static void libraryTree(Context c,String v){ c.getSharedPreferences(PREF,0).edit().putString("library_tree",v).apply(); }
     public static boolean bgEnabled(Context c){ return c.getSharedPreferences(PREF,0).getBoolean("bg_enabled",true); }
     public static void bgEnabled(Context c,boolean v){ c.getSharedPreferences(PREF,0).edit().putBoolean("bg_enabled",v).apply(); }
     public static String fontLabel(String f){
