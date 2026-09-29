@@ -3,6 +3,7 @@ package com.example.subtitleoverlay;
 import android.media.session.MediaController;
 import android.media.MediaMetadata;
 import android.media.session.MediaSessionManager;
+import android.content.ComponentName;
 import android.os.Bundle;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
@@ -35,7 +36,7 @@ public class MediaSessionSyncService extends NotificationListenerService {
         if (manager == null) return;
         clearCallbacks();
         try {
-            List<MediaController> list = manager.getActiveSessions(getComponentName());
+            List<MediaController> list = manager.getActiveSessions(new ComponentName(this, MediaSessionSyncService.class));
             if (list != null) controllers.addAll(list);
             for (MediaController c : controllers) c.registerCallback(callback);
             push();
