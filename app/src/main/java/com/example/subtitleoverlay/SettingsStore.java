@@ -23,12 +23,27 @@ public final class SettingsStore {
     public static void font(Context c,String v){ c.getSharedPreferences(PREF,0).edit().putString("font",v).apply(); }
     public static long offset(Context c){ return c.getSharedPreferences(PREF,0).getLong("offset",0); }
     public static void offset(Context c,long v){ c.getSharedPreferences(PREF,0).edit().putLong("offset",v).apply(); }
+    public static long offset2(Context c){ return c.getSharedPreferences(PREF,0).getLong("offset2",0); }
+    public static void offset2(Context c,long v){ c.getSharedPreferences(PREF,0).edit().putLong("offset2",v).apply(); }
     public static float speed(Context c){ return c.getSharedPreferences(PREF,0).getFloat("speed",1f); }
     public static void speed(Context c,float v){ c.getSharedPreferences(PREF,0).edit().putFloat("speed", clamp(v,.25f,3f)).apply(); }
     public static String libraryTree(Context c) { return c.getSharedPreferences(PREF,0).getString("library_tree", ""); }
     public static void libraryTree(Context c,String v){ c.getSharedPreferences(PREF,0).edit().putString("library_tree",v).apply(); }
     public static boolean bgEnabled(Context c){ return c.getSharedPreferences(PREF,0).getBoolean("bg_enabled",true); }
     public static void bgEnabled(Context c,boolean v){ c.getSharedPreferences(PREF,0).edit().putBoolean("bg_enabled",v).apply(); }
+    // 0 = full width, 1 = fit subtitle, 2 = none. New default is fit-to-subtitle.
+    public static int bgMode(Context c){ return c.getSharedPreferences(PREF,0).getInt("bg_mode",1); }
+    public static void bgMode(Context c,int v){ c.getSharedPreferences(PREF,0).edit().putInt("bg_mode",Math.max(0,Math.min(2,v))).apply(); }
+    // Padding in dp around the subtitle background.
+    public static int bgPadding(Context c){ return c.getSharedPreferences(PREF,0).getInt("bg_padding",6); }
+    public static void bgPadding(Context c,int v){ c.getSharedPreferences(PREF,0).edit().putInt("bg_padding",Math.max(0,Math.min(24,v))).apply(); }
+    // 30,50,70,85,100 percent.
+    public static int bgOpacity(Context c){ return c.getSharedPreferences(PREF,0).getInt("bg_opacity",70); }
+    public static void bgOpacity(Context c,int v){ c.getSharedPreferences(PREF,0).edit().putInt("bg_opacity",Math.max(10,Math.min(100,v))).apply(); }
+    public static boolean doubleSubtitle(Context c){ return c.getSharedPreferences(PREF,0).getBoolean("double_subtitle",false); }
+    public static void doubleSubtitle(Context c,boolean v){ c.getSharedPreferences(PREF,0).edit().putBoolean("double_subtitle",v).apply(); }
+    public static boolean secondaryFirst(Context c){ return c.getSharedPreferences(PREF,0).getBoolean("secondary_first",false); }
+    public static void secondaryFirst(Context c,boolean v){ c.getSharedPreferences(PREF,0).edit().putBoolean("secondary_first",v).apply(); }
 
     // 0 = bottom, 1 = lower, 2 = center, 3 = upper, 4 = top.
     public static int position(Context c){ return c.getSharedPreferences(PREF,0).getInt("position",0); }

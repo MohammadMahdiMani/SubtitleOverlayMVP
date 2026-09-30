@@ -3,47 +3,62 @@ package com.example.subtitleoverlay;
 import android.app.*;import android.content.*;import java.io.InputStream;import java.io.IOException;import android.graphics.Color;import android.net.Uri;import android.os.*;import android.provider.DocumentsContract;import android.provider.Settings;import android.view.*;import android.widget.*;import java.util.*;
 
 public class MainActivity extends Activity{
-    static final int PICK=10, PICK_LIBRARY=11, PICK_FONT=12; Uri uri; TextView status,libraryStatus,fontStatus; Spinner sizeSpinner,fontSpinner,speedSpinner,positionSpinner; LinearLayout root;
+    static final int PICK=10, PICK2=13, PICK_LIBRARY=11, PICK_FONT=12;
+    Uri uri,uri2; TextView status,status2,libraryStatus,fontStatus; Spinner sizeSpinner,fontSpinner,speedSpinner,positionSpinner,bgModeSpinner,bgPaddingSpinner,bgOpacitySpinner; LinearLayout root;
     final int[] colors={Color.WHITE,Color.YELLOW,Color.CYAN,Color.GREEN,Color.RED};
     final int[] bgs={Color.argb(180,0,0,0),Color.argb(180,255,255,255),Color.argb(180,0,60,120),Color.TRANSPARENT};
-    final String[] fonts={"sans-serif","sans-serif-medium","sans-serif-condensed","serif","monospace"};
-    final String[] fontLabels={"Sans","Sans Medium","Condensed","Serif","Monospace"};
-    final float[] sizes={16,20,24,28,32,40,48,56,64};
-    final float[] speeds={0.75f,0.9f,1f,1.1f,1.25f,1.5f};
+    final String[] fontLabels={"Sans","Sans Medium","Condensed","Serif","Monospace","Custom"};
+    final String[] fontVals={"sans-serif","sans-serif-medium","sans-serif-condensed","serif","monospace","custom"};
+    final float[] sizes={16,20,24,28,32,40,48,56,64}; final float[] speeds={0.75f,0.9f,1f,1.1f,1.25f,1.5f};
 
     @Override public void onCreate(Bundle b){super.onCreate(b);build();}
     private void build(){
         root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(28,28,28,28);
-        TextView h=new TextView(this);h.setText("Subtitle Overlay MVP v0.3.3");h.setTextSize(24);root.addView(h);
-        status=new TextView(this);status.setText("Select an SRT file.");status.setPadding(0,12,0,12);root.addView(status);
-        Button p=btn("Select SRT");p.setOnClickListener(v->pick());root.addView(p);
+        TextView h=new TextView(this);h.setText("Subtitle Overlay MVP v1.1");h.setTextSize(24);root.addView(h);
+        status=new TextView(this);status.setText("Select an SRT file.");status.setPadding(0,12,0,4);root.addView(status);
+        Button p=btn("Select Primary SRT");p.setOnClickListener(v->pick(PICK));root.addView(p);
+        status2=new TextView(this);status2.setText("Second subtitle: not selected");status2.setPadding(0,2,0,4);root.addView(status2);
+        Button p2=btn("Select Second SRT");p2.setOnClickListener(v->pick(PICK2));root.addView(p2);
+        Button clear2=btn("Clear Second Subtitle");clear2.setOnClickListener(v->{uri2=null;status2.setText("Second subtitle: not selected");});root.addView(clear2);
         Button chooseLib=btn("Choose Subtitle Library Folder");chooseLib.setOnClickListener(v->chooseLibrary());root.addView(chooseLib);
-        Button openLib=btn("Open Subtitle Library");openLib.setOnClickListener(v->openLibrary());root.addView(openLib);
+        Button openLib=btn("Open Subtitle Library");openLib.setOnClickListener(v->openLibrary(false));root.addView(openLib);
+        Button openLib2=btn("Open Library for Second Subtitle");openLib2.setOnClickListener(v->openLibrary(true));root.addView(openLib2);
         libraryStatus=new TextView(this);libraryStatus.setText(SettingsStore.libraryTree(this).isEmpty()?"Library: not selected":"Library folder is selected");libraryStatus.setPadding(0,4,0,10);root.addView(libraryStatus);
+
         root.addView(label("Subtitle appearance"));
         sizeSpinner=spinner(new String[]{"16 px","20 px","24 px","28 px","32 px","40 px","48 px","56 px","64 px"});setSpinnerFloat(sizeSpinner,sizes,SettingsStore.size(this));root.addView(row("Font size",sizeSpinner));
-        fontSpinner=spinner(SettingsStore.hasCustomFont(this)?new String[]{"Sans","Sans Medium","Condensed","Serif","Monospace","Custom"}:fontLabels);
-        String currentFont=SettingsStore.font(this); int fi=indexOf(new String[]{"sans-serif","sans-serif-medium","sans-serif-condensed","serif","monospace","custom"},currentFont);
-        if(!SettingsStore.hasCustomFont(this) && fi>4) fi=0; fontSpinner.setSelection(fi);
-        fontSpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){String[] vals={"sans-serif","sans-serif-medium","sans-serif-condensed","serif","monospace","custom"};SettingsStore.font(MainActivity.this,vals[Math.min(pos,vals.length-1)]);} });
-        root.addView(row("Font family",fontSpinner));
-        Button customFont=btn("Upload TTF / OTF font"); customFont.setOnClickListener(v->pickFont()); root.addView(customFont);
-        fontStatus=new TextView(this); fontStatus.setText(SettingsStore.hasCustomFont(this)?"Custom font: "+SettingsStore.customFontName(this):"Custom font: none"); fontStatus.setPadding(0,2,0,8); root.addView(fontStatus);
-        root.addView(colorRow("Font color",false));root.addView(colorRow("Background",true));
-        positionSpinner=spinner(new String[]{"Bottom","Lower","Center","Upper","Top"});
-        positionSpinner.setSelection(SettingsStore.position(this));
-        positionSpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){SettingsStore.position(MainActivity.this,pos);} });
-        root.addView(row("Subtitle position",positionSpinner));
+        fontSpinner=spinner(SettingsStore.hasCustomFont(this)?fontLabels:new String[]{"Sans","Sans Medium","Condensed","Serif","Monospace"});
+        int fi=indexOf(fontVals,SettingsStore.font(this));if(!SettingsStore.hasCustomFont(this)&&fi>4)fi=0;fontSpinner.setSelection(fi);
+        fontSpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){SettingsStore.font(MainActivity.this,fontVals[Math.min(pos,fontVals.length-1)]);}});root.addView(row("Font family",fontSpinner));
+        Button customFont=btn("Upload TTF / OTF font");customFont.setOnClickListener(v->pickFont());root.addView(customFont);
+        fontStatus=new TextView(this);fontStatus.setText(SettingsStore.hasCustomFont(this)?"Custom font: "+SettingsStore.customFontName(this):"Custom font: none");fontStatus.setPadding(0,2,0,8);root.addView(fontStatus);
+        root.addView(colorRow("Font color",false));root.addView(colorRow("Background color",true));
+        bgModeSpinner=spinner(new String[]{"Full Width","Fit to Subtitle","No Background"});bgModeSpinner.setSelection(SettingsStore.bgMode(this));bgModeSpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){SettingsStore.bgMode(MainActivity.this,pos);}});root.addView(row("Background mode",bgModeSpinner));
+        bgPaddingSpinner=spinner(new String[]{"0 px","2 px","4 px","6 px","8 px","12 px","16 px"});int bp=indexOfInt(new int[]{0,2,4,6,8,12,16},SettingsStore.bgPadding(this));bgPaddingSpinner.setSelection(bp);bgPaddingSpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){SettingsStore.bgPadding(MainActivity.this,Integer.parseInt(p.getItemAtPosition(pos).toString().replace(" px","")));}});root.addView(row("Background padding",bgPaddingSpinner));
+        bgOpacitySpinner=spinner(new String[]{"30%","50%","70%","85%","100%"});int bo=indexOfInt(new int[]{30,50,70,85,100},SettingsStore.bgOpacity(this));bgOpacitySpinner.setSelection(bo);bgOpacitySpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){SettingsStore.bgOpacity(MainActivity.this,Integer.parseInt(p.getItemAtPosition(pos).toString().replace("%","")));}});root.addView(row("Background opacity",bgOpacitySpinner));
+        positionSpinner=spinner(new String[]{"Bottom","Lower","Center","Upper","Top"});positionSpinner.setSelection(SettingsStore.position(this));positionSpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){SettingsStore.position(MainActivity.this,pos);}});root.addView(row("Subtitle position",positionSpinner));
         speedSpinner=spinner(new String[]{"0.75x","0.9x","1.0x","1.1x","1.25x","1.5x"});setSpinnerFloat(speedSpinner,speeds,SettingsStore.speed(this));root.addView(row("Subtitle timing speed",speedSpinner));
-        TextView off=new TextView(this);off.setText("Sync offset: "+formatOffset(SettingsStore.offset(this)));off.setPadding(0,8,0,8);root.addView(off);
-        SeekBar seek=new SeekBar(this);seek.setMax(120);seek.setProgress((int)(SettingsStore.offset(this)/500)+60);seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar s,int p,boolean f){long v=(p-60)*500L;SettingsStore.offset(MainActivity.this,v);off.setText("Sync offset: "+formatOffset(v));}public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){}});root.addView(seek);
+
+        root.addView(label("Double subtitle"));
+        CheckBox dual=new CheckBox(this);dual.setText("Enable second subtitle");dual.setChecked(SettingsStore.doubleSubtitle(this));dual.setOnCheckedChangeListener((b,checked)->SettingsStore.doubleSubtitle(this,checked));root.addView(dual);
+        CheckBox reverse=new CheckBox(this);reverse.setText("Show second subtitle above primary");reverse.setChecked(SettingsStore.secondaryFirst(this));reverse.setOnCheckedChangeListener((b,checked)->SettingsStore.secondaryFirst(this,checked));root.addView(reverse);
+        TextView dualInfo=new TextView(this);dualInfo.setText("Both subtitles use the same font, color, background, position and video sync. The second subtitle has its own optional timing offset.");dualInfo.setPadding(0,2,0,8);root.addView(dualInfo);
+
+        root.addView(label("Primary subtitle sync offset"));addOffsetControls(SettingsStore.offset(this),false);
+        root.addView(label("Second subtitle sync offset"));addOffsetControls(SettingsStore.offset2(this),true);
+
         Button overlay=btn("Allow overlay");overlay.setOnClickListener(v->startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName()))));root.addView(overlay);
         Button access=btn("Enable Accessibility sync");access.setOnClickListener(v->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));root.addView(access);
         Button media=btn("Enable Media Session auto-sync");media.setOnClickListener(v->startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS")));root.addView(media);
         Button s=btn("START OVERLAY");s.setOnClickListener(v->start());root.addView(s);
         Button stop=btn("STOP OVERLAY");stop.setOnClickListener(v->stopService(new Intent(this,OverlayService.class)));root.addView(stop);
-        TextView info=new TextView(this);info.setText("Auto-sync uses Android MediaSession when the browser exposes it. Accessibility is also used to detect player time and seeks. The overlay never reads or modifies the video stream.");info.setPadding(0,12,0,0);root.addView(info);
+        TextView info=new TextView(this);info.setText("Auto-sync uses Accessibility and MediaSession when the browser exposes them. The overlay never reads or modifies the video stream.");info.setPadding(0,12,0,0);root.addView(info);
         ScrollView sv=new ScrollView(this);sv.addView(root);setContentView(sv);
+    }
+
+    private void addOffsetControls(long initial,boolean second){
+        TextView off=new TextView(this);off.setText("Sync offset: "+formatOffset(initial));off.setPadding(0,0,0,4);root.addView(off);
+        SeekBar seek=new SeekBar(this);seek.setMax(120);seek.setProgress((int)(initial/500)+60);seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar s,int p,boolean f){long v=(p-60)*500L;if(second)SettingsStore.offset2(MainActivity.this,v);else SettingsStore.offset(MainActivity.this,v);off.setText("Sync offset: "+formatOffset(v));}public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){}});root.addView(seek);
     }
     private TextView label(String s){TextView t=new TextView(this);t.setText(s);t.setTextSize(18);t.setPadding(0,18,0,4);return t;}
     private LinearLayout row(String title,View v){LinearLayout r=new LinearLayout(this);r.setGravity(Gravity.CENTER_VERTICAL);TextView t=new TextView(this);t.setText(title);t.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));r.addView(t);r.addView(v);return r;}
@@ -51,62 +66,17 @@ public class MainActivity extends Activity{
     private Spinner spinner(String[] a){Spinner s=new Spinner(this);s.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,a));return s;}
     private void setSpinnerFloat(Spinner s,float[] vals,float current){int idx=0;for(int i=0;i<vals.length;i++)if(Math.abs(vals[i]-current)<0.001){idx=i;break;}s.setSelection(idx);s.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){if(p==sizeSpinner)SettingsStore.size(MainActivity.this,vals[pos]);else SettingsStore.speed(MainActivity.this,vals[pos]);}});}
     private int indexOf(String[] a,String v){for(int i=0;i<a.length;i++)if(a[i].equals(v))return i;return 0;}
+    private int indexOfInt(int[] a,int v){for(int i=0;i<a.length;i++)if(a[i]==v)return i;return 0;}
     private String formatOffset(long v){return (v>=0?"+":"")+(v/1000f)+" s";}
     private Button btn(String s){Button b=new Button(this);b.setText(s);return b;}
     private void pickFont(){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("*/*");i.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"font/ttf","font/otf","application/x-font-ttf","application/x-font-opentype","application/octet-stream"});startActivityForResult(i,PICK_FONT);}
-    private void pick(){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/x-subrip");i.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"application/x-subrip","text/plain","*/*"});startActivityForResult(i,PICK);}
-
-    private void chooseLibrary(){
-        Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION|Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);startActivityForResult(i,PICK_LIBRARY);
-    }
-    private void openLibrary(){
-        String tree=SettingsStore.libraryTree(this); if(tree.isEmpty()){chooseLibrary();return;}
-        Uri rootUri=Uri.parse(tree); List<LibraryFile> files=listSrtFiles(rootUri);
-        if(files.isEmpty()){new AlertDialog.Builder(this).setTitle("Subtitle Library").setMessage("No .srt files found in this folder.").setPositiveButton("OK",null).show();return;}
-        String[] names=new String[files.size()];for(int i=0;i<files.size();i++)names[i]=files.get(i).name;
-        new AlertDialog.Builder(this).setTitle("Choose subtitle").setItems(names,(d,which)->{uri=files.get(which).uri;status.setText("Selected: "+files.get(which).name);}).setNegativeButton("Cancel",null).show();
-    }
-    private List<LibraryFile> listSrtFiles(Uri tree){
-        List<LibraryFile> out=new ArrayList<>();
-        Uri children=DocumentsContract.buildChildDocumentsUriUsingTree(tree,DocumentsContract.getTreeDocumentId(tree));
-        String[] projection={DocumentsContract.Document.COLUMN_DOCUMENT_ID,DocumentsContract.Document.COLUMN_DISPLAY_NAME,DocumentsContract.Document.COLUMN_MIME_TYPE};
-        try(android.database.Cursor c=getContentResolver().query(children,projection,null,null,DocumentsContract.Document.COLUMN_DISPLAY_NAME+" COLLATE NOCASE")){
-            if(c==null)return out;
-            int idCol=c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID), nameCol=c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME), mimeCol=c.getColumnIndex(DocumentsContract.Document.COLUMN_MIME_TYPE);
-            while(c.moveToNext()){
-                String name=c.getString(nameCol);String mime=c.getString(mimeCol);
-                if(name!=null && name.toLowerCase(Locale.ROOT).endsWith(".srt")){
-                    String id=c.getString(idCol);Uri u=DocumentsContract.buildDocumentUriUsingTree(tree,id);out.add(new LibraryFile(name,u));
-                }
-            }
-        }catch(Exception e){Toast.makeText(this,"Could not read library: "+e.getMessage(),Toast.LENGTH_LONG).show();}
-        return out;
-    }
+    private void pick(int request){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("application/x-subrip");i.putExtra(Intent.EXTRA_MIME_TYPES,new String[]{"application/x-subrip","text/plain","*/*"});startActivityForResult(i,request);}
+    private void chooseLibrary(){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION|Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);startActivityForResult(i,PICK_LIBRARY);}
+    private void openLibrary(boolean second){String tree=SettingsStore.libraryTree(this);if(tree.isEmpty()){chooseLibrary();return;}List<LibraryFile> files=listSrtFiles(Uri.parse(tree));if(files.isEmpty()){new AlertDialog.Builder(this).setTitle("Subtitle Library").setMessage("No .srt files found in this folder.").setPositiveButton("OK",null).show();return;}String[] names=new String[files.size()];for(int i=0;i<files.size();i++)names[i]=files.get(i).name;new AlertDialog.Builder(this).setTitle(second?"Choose second subtitle":"Choose primary subtitle").setItems(names,(d,which)->{if(second){uri2=files.get(which).uri;status2.setText("Second subtitle: "+files.get(which).name);}else{uri=files.get(which).uri;status.setText("Primary: "+files.get(which).name);}}).setNegativeButton("Cancel",null).show();}
+    private List<LibraryFile> listSrtFiles(Uri tree){List<LibraryFile> out=new ArrayList<>();Uri children=DocumentsContract.buildChildDocumentsUriUsingTree(tree,DocumentsContract.getTreeDocumentId(tree));String[] projection={DocumentsContract.Document.COLUMN_DOCUMENT_ID,DocumentsContract.Document.COLUMN_DISPLAY_NAME,DocumentsContract.Document.COLUMN_MIME_TYPE};try(android.database.Cursor c=getContentResolver().query(children,projection,null,null,DocumentsContract.Document.COLUMN_DISPLAY_NAME+" COLLATE NOCASE")){if(c==null)return out;int idCol=c.getColumnIndex(DocumentsContract.Document.COLUMN_DOCUMENT_ID),nameCol=c.getColumnIndex(DocumentsContract.Document.COLUMN_DISPLAY_NAME);while(c.moveToNext()){String name=c.getString(nameCol);if(name!=null&&name.toLowerCase(Locale.ROOT).endsWith(".srt")){out.add(new LibraryFile(name,DocumentsContract.buildDocumentUriUsingTree(tree,c.getString(idCol))));}}}catch(Exception e){Toast.makeText(this,"Could not read library: "+e.getMessage(),Toast.LENGTH_LONG).show();}return out;}
     private static class LibraryFile{final String name;final Uri uri;LibraryFile(String n,Uri u){name=n;uri=u;}}
-
-    private void installCustomFont(Uri source){
-        try(InputStream in=getContentResolver().openInputStream(source)){
-            if(in==null)throw new IOException("Could not open font");
-            String name=source.getLastPathSegment(); if(name==null||name.trim().isEmpty())name="custom-font.ttf";
-            name=name.replaceAll("[^A-Za-z0-9._-]","_");
-            if(!name.toLowerCase(Locale.ROOT).endsWith(".ttf")&&!name.toLowerCase(Locale.ROOT).endsWith(".otf"))name += ".ttf";
-            java.io.File out=new java.io.File(getFilesDir(),"font_"+name);
-            try(java.io.FileOutputStream fos=new java.io.FileOutputStream(out)){byte[] buf=new byte[8192];int n;while((n=in.read(buf))!=-1)fos.write(buf,0,n);}
-            android.graphics.Typeface.createFromFile(out); // validate before saving
-            SettingsStore.customFontPath(this,out.getAbsolutePath()); SettingsStore.customFontName(this,name); SettingsStore.font(this,"custom");
-            fontStatus.setText("Custom font: "+name);
-            Toast.makeText(this,"Custom font loaded",Toast.LENGTH_SHORT).show();
-            recreate();
-        }catch(Exception e){Toast.makeText(this,"Could not load font: "+e.getMessage(),Toast.LENGTH_LONG).show();}
-    }
-
-    @Override protected void onActivityResult(int r,int c,Intent d){
-        super.onActivityResult(r,c,d);
-        if(c!=RESULT_OK||d==null)return;
-        if(r==PICK&&d.getData()!=null){uri=d.getData();try{getContentResolver().takePersistableUriPermission(uri,Intent.FLAG_GRANT_READ_URI_PERMISSION);}catch(Exception ignored){}status.setText("Selected: "+uri.getLastPathSegment());}
-        else if(r==PICK_FONT&&d.getData()!=null){installCustomFont(d.getData());}
-        else if(r==PICK_LIBRARY&&d.getData()!=null){Uri tree=d.getData();try{getContentResolver().takePersistableUriPermission(tree,Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);}catch(Exception ignored){try{getContentResolver().takePersistableUriPermission(tree,Intent.FLAG_GRANT_READ_URI_PERMISSION);}catch(Exception ignored2){}}SettingsStore.libraryTree(this,tree.toString());libraryStatus.setText("Library folder selected");openLibrary();}
-    }
-    private void start(){if(uri==null){Toast.makeText(this,"Select an SRT first",Toast.LENGTH_SHORT).show();return;}if(!Settings.canDrawOverlays(this)){Toast.makeText(this,"Allow overlay first",Toast.LENGTH_LONG).show();return;}Intent i=new Intent(this,OverlayService.class).setAction(OverlayService.START).putExtra(OverlayService.URI,uri.toString());if(Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);status.setText("Overlay running");}
+    private void installCustomFont(Uri source){try(InputStream in=getContentResolver().openInputStream(source)){if(in==null)throw new IOException("Could not open font");String name=source.getLastPathSegment();if(name==null||name.trim().isEmpty())name="custom-font.ttf";name=name.replaceAll("[^A-Za-z0-9._-]","_");if(!name.toLowerCase(Locale.ROOT).endsWith(".ttf")&&!name.toLowerCase(Locale.ROOT).endsWith(".otf"))name+=".ttf";java.io.File out=new java.io.File(getFilesDir(),"font_"+name);try(java.io.FileOutputStream fos=new java.io.FileOutputStream(out)){byte[]buf=new byte[8192];int n;while((n=in.read(buf))!=-1)fos.write(buf,0,n);}android.graphics.Typeface.createFromFile(out);SettingsStore.customFontPath(this,out.getAbsolutePath());SettingsStore.customFontName(this,name);SettingsStore.font(this,"custom");fontStatus.setText("Custom font: "+name);Toast.makeText(this,"Custom font loaded",Toast.LENGTH_SHORT).show();recreate();}catch(Exception e){Toast.makeText(this,"Could not load font: "+e.getMessage(),Toast.LENGTH_LONG).show();}}
+    @Override protected void onActivityResult(int r,int c,Intent d){super.onActivityResult(r,c,d);if(c!=RESULT_OK||d==null)return;if((r==PICK||r==PICK2)&&d.getData()!=null){Uri selected=d.getData();try{getContentResolver().takePersistableUriPermission(selected,Intent.FLAG_GRANT_READ_URI_PERMISSION);}catch(Exception ignored){}if(r==PICK){uri=selected;status.setText("Primary: "+selected.getLastPathSegment());}else{uri2=selected;status2.setText("Second subtitle: "+selected.getLastPathSegment());}}else if(r==PICK_FONT&&d.getData()!=null){installCustomFont(d.getData());}else if(r==PICK_LIBRARY&&d.getData()!=null){Uri tree=d.getData();try{getContentResolver().takePersistableUriPermission(tree,Intent.FLAG_GRANT_READ_URI_PERMISSION|Intent.FLAG_GRANT_WRITE_URI_PERMISSION);}catch(Exception ignored){try{getContentResolver().takePersistableUriPermission(tree,Intent.FLAG_GRANT_READ_URI_PERMISSION);}catch(Exception ignored2){}}SettingsStore.libraryTree(this,tree.toString());libraryStatus.setText("Library folder selected");openLibrary(false);}}
+    private void start(){if(uri==null){Toast.makeText(this,"Select a primary SRT first",Toast.LENGTH_SHORT).show();return;}if(SettingsStore.doubleSubtitle(this)&&uri2==null){Toast.makeText(this,"Select the second SRT or disable Double subtitle",Toast.LENGTH_LONG).show();return;}if(!Settings.canDrawOverlays(this)){Toast.makeText(this,"Allow overlay first",Toast.LENGTH_LONG).show();return;}Intent i=new Intent(this,OverlayService.class).setAction(OverlayService.START).putExtra(OverlayService.URI,uri.toString());if(uri2!=null)i.putExtra(OverlayService.URI2,uri2.toString());if(Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);status.setText("Overlay running");}
     abstract static class SimpleListener implements AdapterView.OnItemSelectedListener{public void onNothingSelected(AdapterView<?> p){}}
 }
