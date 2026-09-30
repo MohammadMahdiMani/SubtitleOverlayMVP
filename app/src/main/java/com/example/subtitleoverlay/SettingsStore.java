@@ -3,6 +3,7 @@ package com.example.subtitleoverlay;
 import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import java.io.File;
 
 public final class SettingsStore {
     private SettingsStore() {}
@@ -28,7 +29,19 @@ public final class SettingsStore {
     public static void libraryTree(Context c,String v){ c.getSharedPreferences(PREF,0).edit().putString("library_tree",v).apply(); }
     public static boolean bgEnabled(Context c){ return c.getSharedPreferences(PREF,0).getBoolean("bg_enabled",true); }
     public static void bgEnabled(Context c,boolean v){ c.getSharedPreferences(PREF,0).edit().putBoolean("bg_enabled",v).apply(); }
+
+    // 0 = bottom, 1 = lower, 2 = center, 3 = upper, 4 = top.
+    public static int position(Context c){ return c.getSharedPreferences(PREF,0).getInt("position",0); }
+    public static void position(Context c,int v){ c.getSharedPreferences(PREF,0).edit().putInt("position", Math.max(0,Math.min(4,v))).apply(); }
+
+    public static String customFontPath(Context c){ return c.getSharedPreferences(PREF,0).getString("custom_font_path", ""); }
+    public static void customFontPath(Context c,String v){ c.getSharedPreferences(PREF,0).edit().putString("custom_font_path",v).apply(); }
+    public static String customFontName(Context c){ return c.getSharedPreferences(PREF,0).getString("custom_font_name", ""); }
+    public static void customFontName(Context c,String v){ c.getSharedPreferences(PREF,0).edit().putString("custom_font_name",v).apply(); }
+    public static boolean hasCustomFont(Context c){ String p=customFontPath(c); return p!=null && !p.isEmpty() && new File(p).exists(); }
+
     public static String fontLabel(String f){
+        if("custom".equals(f)) return "Custom";
         if("serif".equals(f)) return "Serif";
         if("monospace".equals(f)) return "Monospace";
         if("sans-serif-condensed".equals(f)) return "Condensed";
@@ -36,5 +49,11 @@ public final class SettingsStore {
         return "Sans";
     }
     public static Typeface typeface(String f){ return Typeface.create(f, Typeface.NORMAL); }
+    public static Typeface typeface(Context c,String f){
+        if("custom".equals(f) && hasCustomFont(c)){
+            try { return Typeface.createFromFile(customFontPath(c)); } catch(Exception ignored) {}
+        }
+        return typeface(f);
+    }
     private static float clamp(float v,float a,float b){return Math.max(a,Math.min(b,v));}
 }

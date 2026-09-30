@@ -1,4 +1,11 @@
-# Subtitle Overlay MVP v0.1
-Android tablet prototype: choose SRT, grant overlay permission, start overlay. Optional Accessibility service tries to read a visible MM:SS/HH:MM:SS player time from the active window. If the browser does not expose time, use the +/- 0.5s controls and the internal timer.
+# SubtitleOverlayMVP v0.3.3
 
-Build in Android Studio with JDK 17. `./gradlew assembleDebug` after generating the Gradle wrapper or using Android Studio's Gradle.
+Built from the working v0.3.2 project.
+
+Changes:
+- Overlay controls auto-hide after 3 seconds but can always be reopened with the small `≡` handle at the top-right.
+- Added subtitle position selection: Bottom / Lower / Center / Upper / Top.
+- Added TTF/OTF custom font import. The font is copied into the app's private storage and can be selected as `Custom`.
+- Added `Pos` to the floating controls so position can be cycled while the overlay is running.
+- Improved SRT text cleanup for ASS/SSA override tags such as `{\\an8}`, `{\\pos(...)}`, `{\\c&H...&}`, `{\\i1}` and common ASS escape sequences.
+- Existing working MediaSession + Accessibility sync behavior is retained.
