@@ -10,14 +10,14 @@ public class SrtParser {
     private static final Pattern BRACE_TAG=Pattern.compile("\\{([^}\\r\\n]*)\\}");
 
     public static List<SrtCue> parse(InputStream in)throws IOException{
-        String x=read(in).replace("\\uFEFF","").replace("\\r\\n","\\n").replace('\\r','\\n');
+        String x=read(in).replace("\uFEFF","").replace("\r\n","\n").replace('\r','\n');
         List<SrtCue> out=new ArrayList<>();
         for(String b:x.split("\\n\\s*\\n")){
             String[] l=b.split("\\n"); Matcher m=null; int ti=-1;
             for(int i=0;i<l.length;i++){ Matcher q=P.matcher(l[i].trim()); if(q.find()){m=q;ti=i;break;} }
             if(m==null)continue;
             long s=t(m,1),e=t(m,5); StringBuilder z=new StringBuilder();
-            for(int i=ti+1;i<l.length;i++){ if(z.length()>0)z.append('\\n'); z.append(l[i].trim()); }
+            for(int i=ti+1;i<l.length;i++){ if(z.length()>0)z.append('\n'); z.append(l[i].trim()); }
             String txt=cleanText(z.toString());
             if(!txt.isEmpty())out.add(new SrtCue(s,e,txt));
         }
