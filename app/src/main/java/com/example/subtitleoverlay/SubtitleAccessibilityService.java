@@ -1,6 +1,8 @@
 package com.example.subtitleoverlay;
 
 import android.accessibilityservice.AccessibilityService;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityEvent;
 import java.util.regex.Matcher;
@@ -9,19 +11,42 @@ import java.util.regex.Pattern;
 public class SubtitleAccessibilityService extends AccessibilityService {
     private static volatile String activePackage;
     private static final Pattern TIME = Pattern.compile("(?<!\\d)(\\d{1,2}):(\\d{2})(?::(\\d{2}))?(?!\\d)");
+    private final Handler handler = new Handler(Looper.getMainLooper());
+    private final Runnable poll = new Runnable() {
+        @Override public void run() {
+            scanCurrentWindow();
+            handler.postDelayed(this, 500);
+        }
+    };
 
     public static String getActivePackage() { return activePackage; }
 
+    @Override public void onServiceConnected() {
+        super.onServiceConnected();
+        handler.removeCallbacks(poll);
+        handler.post(poll);
+    }
+
     @Override public void onAccessibilityEvent(AccessibilityEvent e) {
         if (e.getPackageName() != null) activePackage = e.getPackageName().toString();
+        scanCurrentWindow();
+    }
+
+    private void scanCurrentWindow() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
         try {
+            if (root.getPackageName() != null) activePackage = root.getPackageName().toString();
             long range = findRangePosition(root);
-            if (range >= 0) { OverlayService.setAccessibilityPosition(range); return; }
+            if (range >= 0) {
+                OverlayService.setAccessibilityPosition(range);
+                return;
+            }
             long text = findLikelyCurrentTime(root);
             if (text >= 0) OverlayService.setAccessibilityPosition(text);
-        } finally { root.recycle(); }
+        } finally {
+            root.recycle();
+        }
     }
 
     private long findRangePosition(AccessibilityNodeInfo n) {
@@ -31,7 +56,6 @@ public class SubtitleAccessibilityService extends AccessibilityService {
             float max = r.getMax();
             CharSequence cls = n.getClassName();
             if (current >= 0 && max > 0 && (cls == null || cls.toString().toLowerCase().contains("seek"))) {
-                // HTML/media seek bars normally expose seconds as their range.
                 if (max > 120) return (long)(current * 1000f);
             }
         }
@@ -64,5 +88,11 @@ public class SubtitleAccessibilityService extends AccessibilityService {
             return a*3600000+b*60000+c*1000;
         }catch(Exception ignored){return -1;}
     }
+
     @Override public void onInterrupt() {}
+
+    @Override public void onDestroy() {
+        handler.removeCallbacksAndMessages(null);
+        super.onDestroy();
+    }
 }

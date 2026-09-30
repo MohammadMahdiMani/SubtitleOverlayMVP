@@ -152,7 +152,7 @@ public class OverlayService extends Service {
 
     private long currentPosition(){
         long now=SystemClock.elapsedRealtime();
-        if(accessibilityPosition>=0&&now-accessibilityUpdatedAt<10000){long pos=accessibilityPosition;if(accessibilityPlaying){float sp=(mediaSpeed>0f&&mediaSpeed<4f)?mediaSpeed:1f;pos+=(long)((now-accessibilityUpdatedAt)*sp);}return Math.max(0,(long)(pos*timingScale)+offset);}
+        if(accessibilityPosition>=0&&now-accessibilityUpdatedAt<3000){long pos=accessibilityPosition;if(accessibilityPlaying){float sp=(mediaSpeed>0f&&mediaSpeed<4f)?mediaSpeed:1f;pos+=(long)((now-accessibilityUpdatedAt)*sp);}return Math.max(0,(long)(pos*timingScale)+offset);}
         if(mediaPosition>=0&&now-mediaUpdatedAt<5000){long pos=mediaPosition;if(mediaPlaying)pos+=(long)((now-mediaUpdatedAt)*mediaSpeed);return Math.max(0,(long)(pos*timingScale)+offset);}
         long pos=run?base+(SystemClock.uptimeMillis()-start):base;return Math.max(0,(long)(pos*timingScale)+offset);
     }
