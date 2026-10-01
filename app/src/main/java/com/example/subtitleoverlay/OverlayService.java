@@ -17,6 +17,7 @@ public class OverlayService extends Service {
     private WindowManager wm;
     private TextView sub;
     private ViewGroup ctl;
+    private TextView info;
     private List<SrtCue> cues=new ArrayList<>(), cues2=new ArrayList<>();
     private final Handler h=new Handler(Looper.getMainLooper());
     private long offset, offset2;
@@ -30,31 +31,70 @@ public class OverlayService extends Service {
     private static volatile long accessibilityPosition=-1, accessibilityUpdatedAt;
     private static volatile boolean accessibilityPlaying=true;
     private static volatile long lastAccessObserved=-1;
+    private static volatile long mediaAuthorityUntil=0;
+    private static volatile long lastMediaAccepted=-1;
+    private static volatile long lastMediaUpdateObserved=-1;
+    private static volatile int mediaDivergenceCount=0;
 
     private static final int[] TEXT_COLORS={Color.WHITE,Color.YELLOW,Color.CYAN,Color.GREEN,Color.RED};
     private static final int[] BG_COLORS={Color.argb(180,0,0,0),Color.argb(180,255,255,255),Color.argb(180,0,60,120),Color.TRANSPARENT};
     private static final String[] FONTS={"sans-serif","sans-serif-medium","sans-serif-condensed","serif","monospace","custom"};
 
-    public static void setMediaPosition(long ms,float speed,long duration,String pkg,boolean playing){
+    public static synchronized void setMediaPosition(long ms,float speed,long duration,String pkg,boolean playing){
         if(ms<0)return;
         long now=SystemClock.elapsedRealtime();
-        if(accessibilityPosition>=0 && now-accessibilityUpdatedAt<10000){
+        float validSpeed=(speed>0f&&speed<4f)?speed:1f;
+
+        // Always keep the latest MediaSession sample. It is the best source during
+        // real seeks because Accessibility can lag or expose another timestamp.
+        mediaPosition=ms;
+        mediaSpeed=validSpeed;
+        if(duration>0)mediaDuration=duration;
+        mediaPlaying=playing;
+        mediaUpdatedAt=now;
+
+        if(accessibilityPosition>=0 && now-accessibilityUpdatedAt<4000){
             long predicted=accessibilityPosition;
-            if(accessibilityPlaying){float sp=(speed>0f&&speed<4f)?speed:1f;predicted+=(long)((now-accessibilityUpdatedAt)*sp);}
-            if(Math.abs(ms-predicted)>2500){
-                mediaSpeed=(speed>0f&&speed<4f)?speed:mediaSpeed;
-                if(duration>0)mediaDuration=duration;
-                mediaPlaying=playing;
-                return;
+            if(accessibilityPlaying){
+                float sp=(mediaSpeed>0f&&mediaSpeed<4f)?mediaSpeed:1f;
+                predicted+=(long)((now-accessibilityUpdatedAt)*sp);
             }
+            long diff=Math.abs(ms-predicted);
+
+            // A large MediaSession jump is treated as a possible seek. Requiring
+            // two nearby MediaSession observations avoids handing authority to a
+            // single noisy callback.
+            if(diff>2500){
+                if(lastMediaAccepted>=0 && Math.abs(ms-lastMediaAccepted)<1200){
+                    mediaDivergenceCount++;
+                }else{
+                    mediaDivergenceCount=1;
+                }
+                lastMediaAccepted=ms;
+                lastMediaUpdateObserved=now;
+                if(mediaDivergenceCount>=2){
+                    mediaAuthorityUntil=now+4500;
+                }
+            }else if(diff<1200){
+                mediaDivergenceCount=0;
+                if(mediaAuthorityUntil>now)mediaAuthorityUntil=now+700;
+            }
+        }else{
+            mediaDivergenceCount=0;
         }
-        mediaPosition=ms;mediaSpeed=(speed>0f&&speed<4f)?speed:1f;mediaDuration=duration;mediaPlaying=playing;mediaUpdatedAt=now;
     }
-    public static void setAccessibilityPosition(long ms){
+
+    public static synchronized void setAccessibilityPosition(long ms){
         if(ms<0)return;
         long now=SystemClock.elapsedRealtime();
-        if(lastAccessObserved>=0 && Math.abs(ms-lastAccessObserved)>1500){ accessibilityUpdatedAt=now; }
-        lastAccessObserved=ms;accessibilityPosition=ms;accessibilityUpdatedAt=now;
+        if(lastAccessObserved>=0 && Math.abs(ms-lastAccessObserved)>1500){
+            // A large Accessibility jump is itself a valid seek anchor.
+            mediaAuthorityUntil=0;
+            mediaDivergenceCount=0;
+        }
+        lastAccessObserved=ms;
+        accessibilityPosition=ms;
+        accessibilityUpdatedAt=now;
     }
     public static void setAccessibilityPlaying(boolean playing){accessibilityPlaying=playing;accessibilityUpdatedAt=SystemClock.elapsedRealtime();}
 
@@ -100,7 +140,7 @@ public class OverlayService extends Service {
 
         HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(false);
         LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setPadding(4,2,4,2);
-        TextView info=button("AUTO 00:00");row.addView(info);
+        info=button("AUTO 00:00");row.addView(info);
         add(row,"A−",v->changeSize(-2));add(row,"A+",v->changeSize(2));add(row,"Color",v->cycleTextColor());add(row,"BG",v->cycleBg());add(row,"Font",v->cycleFont());add(row,"Pos",v->cyclePosition());
         add(row,"BG Mode",v->cycleBgMode());add(row,"Pad",v->cycleBgPadding());add(row,"Opacity",v->cycleBgOpacity());
         add(row,"−0.5s",v->changeOffset(-500));add(row,"+0.5s",v->changeOffset(500));add(row,"Offset 0",v->resetOffset());add(row,"Speed",v->cycleSpeed());
@@ -139,9 +179,22 @@ public class OverlayService extends Service {
 
     private long currentPosition(){
         long now=SystemClock.elapsedRealtime();
-        if(accessibilityPosition>=0&&now-accessibilityUpdatedAt<3000){long pos=accessibilityPosition;if(accessibilityPlaying){float sp=(mediaSpeed>0f&&mediaSpeed<4f)?mediaSpeed:1f;pos+=(long)((now-accessibilityUpdatedAt)*sp);}return Math.max(0,(long)(pos*timingScale)+offset);}
-        if(mediaPosition>=0&&now-mediaUpdatedAt<5000){long pos=mediaPosition;if(mediaPlaying)pos+=(long)((now-mediaUpdatedAt)*mediaSpeed);return Math.max(0,(long)(pos*timingScale)+offset);}
-        long pos=run?base+(SystemClock.uptimeMillis()-start):base;return Math.max(0,(long)(pos*timingScale)+offset);
+        boolean mediaAuthority=mediaAuthorityUntil>now && mediaPosition>=0 && now-mediaUpdatedAt<5000;
+        if(!mediaAuthority && accessibilityPosition>=0&&now-accessibilityUpdatedAt<3000){
+            long pos=accessibilityPosition;
+            if(accessibilityPlaying){
+                float sp=(mediaSpeed>0f&&mediaSpeed<4f)?mediaSpeed:1f;
+                pos+=(long)((now-accessibilityUpdatedAt)*sp);
+            }
+            return Math.max(0,(long)(pos*timingScale)+offset);
+        }
+        if(mediaPosition>=0&&now-mediaUpdatedAt<5000){
+            long pos=mediaPosition;
+            if(mediaPlaying)pos+=(long)((now-mediaUpdatedAt)*mediaSpeed);
+            return Math.max(0,(long)(pos*timingScale)+offset);
+        }
+        long pos=run?base+(SystemClock.uptimeMillis()-start):base;
+        return Math.max(0,(long)(pos*timingScale)+offset);
     }
     private SrtCue find(List<SrtCue> list,long raw){for(SrtCue c:list){if(raw>=c.startMs&&raw<=c.endMs)return c;if(c.startMs>raw)break;}return null;}
     private String combineText(long videoPos){
@@ -151,7 +204,24 @@ public class OverlayService extends Service {
         String second=SettingsStore.secondaryFirst(this)?(a==null?"":a.text):(b==null?"":b.text);
         if(first.isEmpty())return second;if(second.isEmpty())return first;return first+"\n"+second;
     }
-    private final Runnable tick=new Runnable(){@Override public void run(){if(sub==null)return;updateControlsVisibility();long pos=currentPosition();String text=combineText(pos);sub.setText(text);sub.setVisibility(text.isEmpty()?View.INVISIBLE:View.VISIBLE);applyBackground(false);if(sub.getVisibility()==View.VISIBLE)refreshLayout();h.postDelayed(this,60);}};
+    private String lastText="";
+    private int lastBgMode=-1,lastBgPadding=-1,lastBgOpacity=-1,lastPosition=-1;
+    private final Runnable tick=new Runnable(){@Override public void run(){
+        if(sub==null)return;
+        updateControlsVisibility();
+        long pos=currentPosition();
+        String text=combineText(pos);
+        boolean visible=!text.isEmpty();
+        if(!text.equals(lastText)){sub.setText(text);lastText=text;}
+        if(sub.getVisibility()!=(visible?View.VISIBLE:View.INVISIBLE))sub.setVisibility(visible?View.VISIBLE:View.INVISIBLE);
+        int bm=SettingsStore.bgMode(OverlayService.this),bp=SettingsStore.bgPadding(OverlayService.this),bo=SettingsStore.bgOpacity(OverlayService.this),pp=SettingsStore.position(OverlayService.this);
+        if(bm!=lastBgMode||bp!=lastBgPadding||bo!=lastBgOpacity){
+            int pad=dp(bp);sub.setPadding(pad,pad,pad,pad);applyBackground(false);refreshLayout();lastBgMode=bm;lastBgPadding=bp;lastBgOpacity=bo;
+        }
+        if(pp!=lastPosition){refreshLayout();lastPosition=pp;}
+        if(info!=null){long now=SystemClock.elapsedRealtime();String mode=(mediaAuthorityUntil>now&&mediaPosition>=0)?"MEDIA":((accessibilityPosition>=0&&now-accessibilityUpdatedAt<3000)?"ACCESS":"MAN");info.setText(mode+" "+fmt(pos)+(mediaDuration>0?" / "+fmt(mediaDuration):""));}
+        h.postDelayed(this,80);
+    }};
     private String fmt(long ms){long sec=Math.max(0,ms)/1000;long m=sec/60;long s=sec%60;return String.format(Locale.US,"%02d:%02d",m,s);}
     private void remove(){if(wm==null)return;try{if(sub!=null)wm.removeView(sub);}catch(Exception ignored){}try{if(ctl!=null)wm.removeView(ctl);}catch(Exception ignored){}sub=null;ctl=null;}
     @Override public void onDestroy(){h.removeCallbacksAndMessages(null);remove();instance=null;super.onDestroy();}
