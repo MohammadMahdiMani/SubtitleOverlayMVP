@@ -27,6 +27,10 @@ public final class SettingsStore {
     public static void offset2(Context c,long v){ c.getSharedPreferences(PREF,0).edit().putLong("offset2",v).apply(); }
     public static float speed(Context c){ return c.getSharedPreferences(PREF,0).getFloat("speed",1f); }
     public static void speed(Context c,float v){ c.getSharedPreferences(PREF,0).edit().putFloat("speed", clamp(v,.25f,3f)).apply(); }
+    public static String primaryUri(Context c){ return c.getSharedPreferences(PREF,0).getString("primary_uri", ""); }
+    public static void primaryUri(Context c,String v){ c.getSharedPreferences(PREF,0).edit().putString("primary_uri",v).apply(); }
+    public static String secondaryUri(Context c){ return c.getSharedPreferences(PREF,0).getString("secondary_uri", ""); }
+    public static void secondaryUri(Context c,String v){ c.getSharedPreferences(PREF,0).edit().putString("secondary_uri",v).apply(); }
     public static String libraryTree(Context c) { return c.getSharedPreferences(PREF,0).getString("library_tree", ""); }
     public static void libraryTree(Context c,String v){ c.getSharedPreferences(PREF,0).edit().putString("library_tree",v).apply(); }
     public static boolean bgEnabled(Context c){ return c.getSharedPreferences(PREF,0).getBoolean("bg_enabled",true); }
@@ -44,6 +48,9 @@ public final class SettingsStore {
     public static void doubleSubtitle(Context c,boolean v){ c.getSharedPreferences(PREF,0).edit().putBoolean("double_subtitle",v).apply(); }
     public static boolean secondaryFirst(Context c){ return c.getSharedPreferences(PREF,0).getBoolean("secondary_first",false); }
     public static void secondaryFirst(Context c,boolean v){ c.getSharedPreferences(PREF,0).edit().putBoolean("secondary_first",v).apply(); }
+    // Overlay controls auto-hide: 0 = always visible, otherwise seconds.
+    public static int controlsAutoHide(Context c){ return c.getSharedPreferences(PREF,0).getInt("controls_auto_hide",3); }
+    public static void controlsAutoHide(Context c,int v){ c.getSharedPreferences(PREF,0).edit().putInt("controls_auto_hide",v==0?0:Math.max(1,Math.min(60,v))).apply(); }
 
     // 0 = bottom, 1 = lower, 2 = center, 3 = upper, 4 = top.
     public static int position(Context c){ return c.getSharedPreferences(PREF,0).getInt("position",0); }
