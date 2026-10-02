@@ -200,7 +200,8 @@ public class OverlayService extends Service {
         Runnable update=()->{int c=Color.rgb(r.getProgress(),g.getProgress(),b.getProgress());hex.setText(String.format(Locale.US,"#%02X%02X%02X",Color.red(c),Color.green(c),Color.blue(c)));};
         SeekBar.OnSeekBarChangeListener l=new SeekBar.OnSeekBarChangeListener(){public void onProgressChanged(SeekBar s,int p,boolean f){update.run();}public void onStartTrackingTouch(SeekBar s){}public void onStopTrackingTouch(SeekBar s){}};r.setOnSeekBarChangeListener(l);g.setOnSeekBarChangeListener(l);b.setOnSeekBarChangeListener(l);update.run();
         AlertDialog d=new AlertDialog.Builder(this).setTitle(background?"Background color":"Subtitle color").setView(box).setNegativeButton("Cancel",null).setPositiveButton("Apply",null).create();
-        d.setOnShowListener(x->d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{int c=Color.rgb(r.getProgress(),g.getProgress(),b.getProgress());if(background){SettingsStore.bgColor(this,c);SettingsStore.bgEnabled(this,!transparent.isChecked());}else SettingsStore.textColor(this,c);refreshAppearance();d.dismiss();});d.show();
+        d.setOnShowListener(x->d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{int c=Color.rgb(r.getProgress(),g.getProgress(),b.getProgress());if(background){SettingsStore.bgColor(this,c);SettingsStore.bgEnabled(this,!transparent.isChecked());}else SettingsStore.textColor(this,c);refreshAppearance();d.dismiss();}));
+        d.show();
     }
     private LinearLayout colorSlider(String name,SeekBar seek){LinearLayout r=new LinearLayout(this);r.setGravity(Gravity.CENTER_VERTICAL);TextView t=new TextView(this);t.setText(name);t.setTextColor(Color.WHITE);t.setTextSize(12);t.setLayoutParams(new LinearLayout.LayoutParams(dp(48),-2));r.addView(t);r.addView(seek,new LinearLayout.LayoutParams(0,-2,1));return r;}
 
