@@ -141,14 +141,14 @@ public class OverlayService extends Service {
         HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(false);
         LinearLayout rows=new LinearLayout(this);rows.setOrientation(LinearLayout.VERTICAL);rows.setPadding(dp(4),dp(2),dp(4),dp(2));
         LinearLayout appearance=new LinearLayout(this);appearance.setOrientation(LinearLayout.HORIZONTAL);
-        info=button("AUTO 00:00");appearance.addView(info);
+        info=button("AUTO 00:00");LinearLayout.LayoutParams ip=new LinearLayout.LayoutParams(-2,dp(34));ip.setMargins(dp(3),dp(3),dp(3),dp(3));appearance.addView(info,ip);
         add(appearance,"A−",v->changeSize(-2));add(appearance,"A+",v->changeSize(2));add(appearance,"Color",v->showOverlayColorPicker(false));add(appearance,"BG",v->showOverlayColorPicker(true));add(appearance,"Font",v->cycleFont());add(appearance,"Pos",v->cyclePosition());
         add(appearance,"BG Mode",v->cycleBgMode());add(appearance,"Pad",v->cycleBgPadding());add(appearance,"Opacity",v->cycleBgOpacity());
         LinearLayout sync=new LinearLayout(this);sync.setOrientation(LinearLayout.HORIZONTAL);
         add(sync,"−0.5s",v->changeOffset(-500));add(sync,"+0.5s",v->changeOffset(500));add(sync,"Offset 0",v->resetOffset());add(sync,"Speed",v->cycleSpeed());
         add(sync,run?"Pause":"Play",v->{run=!run;if(run)start=SystemClock.uptimeMillis();((Button)v).setText(run?"Pause":"Play");touchControls();});
         add(sync,"Hide",v->cycleAutoHide());add(sync,"✕",v->stopSelf());
-        rows.addView(appearance);rows.addView(sync);scroll.addView(rows);ctl=scroll;
+        rows.addView(appearance);LinearLayout.LayoutParams rp=new LinearLayout.LayoutParams(-1,dp(40));rp.setMargins(0,dp(2),0,dp(2));rows.addView(sync,rp);scroll.addView(rows);ctl=scroll;
         WindowManager.LayoutParams q=new WindowManager.LayoutParams(-2,-2,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT);
         q.gravity=Gravity.TOP|Gravity.CENTER_HORIZONTAL;q.y=25;wm.addView(ctl,q);
         controlsHideAt=SystemClock.elapsedRealtime()+3000;touchControls();h.post(tick);
@@ -162,12 +162,44 @@ public class OverlayService extends Service {
     private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
     private Button button(String s){
         Button b=new Button(this);b.setText(s);b.setTextSize(10);b.setMinHeight(1);b.setMinWidth(1);
+        b.setAllCaps(false);b.setPadding(dp(7),0,dp(7),0);
         GradientDrawable n=new GradientDrawable();n.setColor(Color.argb(235,40,40,40));n.setCornerRadius(dp(6));
         GradientDrawable p=new GradientDrawable();p.setColor(Color.argb(255,75,75,75));p.setCornerRadius(dp(6));
-        android.graphics.drawable.StateListDrawable st=new android.graphics.drawable.StateListDrawable();st.addState(new int[]{android.R.attr.state_pressed},p);st.addState(new int[]{android.R.attr.state_hovered},p);st.addState(new int[]{},n);b.setBackground(st);b.setTextColor(Color.WHITE);
+        GradientDrawable selected=new GradientDrawable();selected.setColor(Color.argb(255,92,92,92));selected.setCornerRadius(dp(6));
+        GradientDrawable focused=new GradientDrawable();focused.setColor(Color.argb(255,65,65,65));focused.setCornerRadius(dp(6));
+        android.graphics.drawable.StateListDrawable st=new android.graphics.drawable.StateListDrawable();
+        st.addState(new int[]{android.R.attr.state_pressed},p);
+        st.addState(new int[]{android.R.attr.state_selected},selected);
+        st.addState(new int[]{android.R.attr.state_hovered},focused);
+        st.addState(new int[]{android.R.attr.state_focused},focused);
+        st.addState(new int[]{},n);
+        b.setBackground(st);b.setTextColor(Color.WHITE);
         b.setOnTouchListener((v,e)->{if(e.getAction()==MotionEvent.ACTION_DOWN)touchControls();return false;});return b;
     }
-    private void add(LinearLayout row,String text,View.OnClickListener l){Button b=button(text);b.setOnClickListener(l);row.addView(b);}
+    private void add(LinearLayout row,String text,View.OnClickListener l){
+        Button b=button(text);b.setTag(text);
+        b.setOnClickListener(v->{
+            for(int i=0;i<row.getChildCount();i++) row.getChildAt(i).setSelected(false);
+            b.setSelected(true);
+            l.onClick(v);
+            if("Pause".equals(text)||"Play".equals(text)) b.setSelected(run);
+        });
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(34));p.setMargins(dp(3),dp(3),dp(3),dp(3));row.addView(b,p);
+    }
+    private void refreshButtonStates(){
+        if(ctl==null)return;
+        ViewGroup rows=(ViewGroup)((HorizontalScrollView)ctl).getChildAt(0);
+        if(rows==null||rows.getChildCount()<2)return;
+        ViewGroup sync=(ViewGroup)rows.getChildAt(1);
+        for(int i=0;i<sync.getChildCount();i++){
+            View v=sync.getChildAt(i);
+            if(v instanceof Button){
+                String t=String.valueOf(v.getTag());
+                if("Pause".equals(t)||"Play".equals(t)) v.setSelected(run);
+            }
+        }
+    }
+
     public void refreshControlsVisibilityFromSettings(){
         if(ctl==null)return;
         if(SettingsStore.controlsAutoHide(this)==0){controlsHideAt=Long.MAX_VALUE;ctl.setVisibility(View.VISIBLE);setSubtitleTouchEnabled(false);}
@@ -274,6 +306,7 @@ public class OverlayService extends Service {
         }
         if(pp!=lastPosition){refreshLayout();lastPosition=pp;}
         if(info!=null){long now=SystemClock.elapsedRealtime();String mode=(mediaAuthorityUntil>now&&mediaPosition>=0)?"MEDIA":((accessibilityPosition>=0&&now-accessibilityUpdatedAt<3000)?"ACCESS":"MAN");info.setText(mode+" "+fmt(pos)+(mediaDuration>0?" / "+fmt(mediaDuration):""));}
+        refreshButtonStates();
         h.postDelayed(this,80);
     }};
     private String fmt(long ms){long sec=Math.max(0,ms)/1000;long m=sec/60;long s=sec%60;return String.format(Locale.US,"%02d:%02d",m,s);}

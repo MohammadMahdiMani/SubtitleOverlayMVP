@@ -26,6 +26,8 @@ public class MainActivity extends Activity {
     TextView overlayCheck, notificationCheck, accessibilityCheck;
     LinearLayout root;
     private boolean firstResume=true;
+    private final Handler statusHandler=new Handler(Looper.getMainLooper());
+    private final Runnable statusPoll=()->{refreshPermissionStatus();statusHandler.postDelayed(statusPoll,1000);};
     Spinner sizeSpinner, fontSpinner, speedSpinner, positionSpinner, bgModeSpinner, bgPaddingSpinner, bgOpacitySpinner;
 
     final int[] colors={Color.WHITE,Color.YELLOW,Color.CYAN,Color.GREEN,Color.RED};
@@ -187,7 +189,7 @@ public class MainActivity extends Activity {
 
     private TextView permissionRow(LinearLayout parent,String label,View.OnClickListener action){
         LinearLayout r=new LinearLayout(this); r.setGravity(Gravity.CENTER_VERTICAL); r.setPadding(0,dp(5),0,dp(5));
-        TextView check=new TextView(this); check.setTextSize(18); check.setGravity(Gravity.CENTER); check.setMinWidth(dp(30));
+        TextView check=new TextView(this); check.setTextSize(14); check.setGravity(Gravity.CENTER_VERTICAL); check.setMinWidth(dp(30));
         TextView name=new TextView(this); name.setText(label); name.setTextSize(15); name.setTextColor(text()); name.setTypeface(null,1); name.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));
         Button open=outlineButton("Settings"); open.setTextSize(12); open.setMinHeight(dp(38)); open.setOnClickListener(action);
         r.addView(check); r.addView(name); r.addView(open,new LinearLayout.LayoutParams(dp(100),dp(40))); parent.addView(r);
@@ -218,11 +220,27 @@ public class MainActivity extends Activity {
         if(overlayCheck==null)return;
         setCheck(overlayCheck,Settings.canDrawOverlays(this));
         setCheck(notificationCheck,notificationEnabled() && notificationListenerEnabled());
-        setCheck(accessibilityCheck,accessibilityEnabled());
+        boolean accEnabled=accessibilityEnabled();
+        boolean accWorking=accEnabled && SubtitleAccessibilityService.isWorking();
+        if(!accEnabled){
+            accessibilityCheck.setText("! Disabled");
+            accessibilityCheck.setTextColor(DANGER);
+            accessibilityCheck.setContentDescription("Accessibility disabled");
+        }else if(accWorking){
+            accessibilityCheck.setText("✓ Working");
+            accessibilityCheck.setTextColor(Color.rgb(46,125,50));
+            accessibilityCheck.setContentDescription("Accessibility working");
+        }else{
+            accessibilityCheck.setText("⚠ Not working");
+            accessibilityCheck.setTextColor(Color.rgb(245,124,0));
+            accessibilityCheck.setContentDescription("Accessibility enabled but not working");
+        }
+        accessibilityCheck.setTypeface(null,1);
     }
     private void setCheck(TextView v,boolean ok){ v.setText(ok?"✓":"!"); v.setTextColor(ok?Color.rgb(46,125,50):DANGER); v.setTypeface(null,1); v.setContentDescription(ok?"Enabled":"Needs attention"); }
 
-    @Override protected void onResume(){ super.onResume(); if(!firstResume) build(); firstResume=false; refreshPermissionStatus(); }
+    @Override protected void onResume(){ super.onResume(); if(!firstResume) build(); firstResume=false; refreshPermissionStatus(); statusHandler.removeCallbacks(statusPoll); statusHandler.postDelayed(statusPoll,500); }
+    @Override protected void onPause(){ statusHandler.removeCallbacks(statusPoll); super.onPause(); }
 
     private void addOffsetControls(LinearLayout parent,long initial,boolean second){
         TextView off=smallText("Current offset: "+formatOffset(initial)); parent.addView(off,lp(-1,-2,0,0,0,2));
