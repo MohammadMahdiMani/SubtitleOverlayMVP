@@ -27,7 +27,7 @@ public class MainActivity extends Activity {
     LinearLayout root;
     private boolean firstResume=true;
     private final Handler statusHandler=new Handler(Looper.getMainLooper());
-    private final Runnable statusPoll=()->{refreshPermissionStatus();statusHandler.postDelayed(statusPoll,1000);};
+    private final Runnable statusPoll=new Runnable(){ @Override public void run(){ refreshPermissionStatus(); statusHandler.postDelayed(this,1000); } };
     Spinner sizeSpinner, fontSpinner, speedSpinner, positionSpinner, bgModeSpinner, bgPaddingSpinner, bgOpacitySpinner;
 
     final int[] colors={Color.WHITE,Color.YELLOW,Color.CYAN,Color.GREEN,Color.RED};
