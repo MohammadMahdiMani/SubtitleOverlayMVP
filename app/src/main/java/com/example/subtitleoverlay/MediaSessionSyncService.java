@@ -5,6 +5,9 @@ import android.media.MediaMetadata;
 import android.media.session.MediaSessionManager;
 import android.content.ComponentName;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import java.util.ArrayList;
@@ -18,6 +21,20 @@ import java.util.List;
 public class MediaSessionSyncService extends NotificationListenerService {
     private MediaSessionManager manager;
     private final List<MediaController> controllers = new ArrayList<>();
+    private final Handler pollHandler = new Handler(Looper.getMainLooper());
+    private long lastControllerRefresh = 0;
+    private static final long POLL_INTERVAL_MS = 500;
+    private static final long REFRESH_INTERVAL_MS = 2500;
+    private final Runnable poll = new Runnable() {
+        @Override public void run() {
+            if (manager != null) {
+                long now = SystemClock.elapsedRealtime();
+                if (now - lastControllerRefresh >= REFRESH_INTERVAL_MS) refresh();
+                else push();
+            }
+            pollHandler.postDelayed(this, POLL_INTERVAL_MS);
+        }
+    };
     private final MediaController.Callback callback = new MediaController.Callback() {
         @Override public void onPlaybackStateChanged(android.media.session.PlaybackState state) { push(); }
         @Override public void onMetadataChanged(MediaMetadata metadata) { push(); }
@@ -26,7 +43,10 @@ public class MediaSessionSyncService extends NotificationListenerService {
     @Override public void onListenerConnected() {
         super.onListenerConnected();
         manager = (MediaSessionManager)getSystemService(MEDIA_SESSION_SERVICE);
+        lastControllerRefresh = SystemClock.elapsedRealtime();
         refresh();
+        pollHandler.removeCallbacks(poll);
+        pollHandler.postDelayed(poll, POLL_INTERVAL_MS);
     }
 
     @Override public void onNotificationPosted(StatusBarNotification sbn) { refresh(); }
@@ -34,6 +54,7 @@ public class MediaSessionSyncService extends NotificationListenerService {
 
     private synchronized void refresh() {
         if (manager == null) return;
+        lastControllerRefresh = SystemClock.elapsedRealtime();
         clearCallbacks();
         try {
             List<MediaController> list = manager.getActiveSessions(new ComponentName(this, MediaSessionSyncService.class));
@@ -48,32 +69,64 @@ public class MediaSessionSyncService extends NotificationListenerService {
         controllers.clear();
     }
 
-    private void push() {
-        MediaController best = null;
+    private synchronized void push() {
+        MediaController bestPlayingPreferred = null;
+        MediaController bestPlaying = null;
+        MediaController bestPausedPreferred = null;
+        MediaController bestPaused = null;
         String preferred = SubtitleAccessibilityService.getActivePackage();
-        long now = android.os.SystemClock.elapsedRealtime();
+
+        // Prefer the active browser's playing session, but never let a stale paused
+        // session prevent us from using another currently playing media session.
         for (MediaController c : controllers) {
-            android.media.session.PlaybackState s = c.getPlaybackState();
-            if (s == null) continue;
-            boolean playing = s.getState() == android.media.session.PlaybackState.STATE_PLAYING;
-            if (!playing && best == null) continue;
-            if (preferred != null && preferred.equals(c.getPackageName())) { best = c; if (playing) break; }
-            else if (best == null && playing) best = c;
+            android.media.session.PlaybackState state;
+            try { state = c.getPlaybackState(); } catch (Exception ignored) { continue; }
+            if (state == null || state.getPosition() < 0) continue;
+            boolean playing = state.getState() == android.media.session.PlaybackState.STATE_PLAYING;
+            boolean matches = preferred != null && preferred.equals(c.getPackageName());
+            if (playing && matches && bestPlayingPreferred == null) bestPlayingPreferred = c;
+            else if (playing && bestPlaying == null) bestPlaying = c;
+            else if (!playing && matches && bestPausedPreferred == null) bestPausedPreferred = c;
+            else if (!playing && bestPaused == null) bestPaused = c;
         }
+        MediaController best = bestPlayingPreferred != null ? bestPlayingPreferred
+                : bestPlaying != null ? bestPlaying
+                : bestPausedPreferred != null ? bestPausedPreferred : bestPaused;
         if (best == null) return;
-        android.media.session.PlaybackState s = best.getPlaybackState();
-        if (s == null || s.getPosition() < 0) return;
-        long position = s.getPosition();
-        float speed = s.getPlaybackSpeed();
-        if (s.getState() == android.media.session.PlaybackState.STATE_PLAYING && speed != 0f) {
-            long delta = now - s.getLastPositionUpdateTime();
-            if (delta > 0 && delta < 10000) position += (long)(delta * speed);
+
+        android.media.session.PlaybackState state;
+        try { state = best.getPlaybackState(); } catch (Exception ignored) { return; }
+        if (state == null || state.getPosition() < 0) return;
+        long now = SystemClock.elapsedRealtime();
+        long position = state.getPosition();
+        float speed = state.getPlaybackSpeed();
+        boolean playing = state.getState() == android.media.session.PlaybackState.STATE_PLAYING;
+        if (playing && speed > 0f && speed < 4f) {
+            long lastUpdate = state.getLastPositionUpdateTime();
+            long delta = now - lastUpdate;
+            // PlaybackState timestamps use elapsed realtime. Avoid extrapolating
+            // from an implausibly old/future anchor.
+            if (lastUpdate > 0 && delta >= 0 && delta < 30000) {
+                position += (long) (delta * speed);
+            }
         }
         long duration = -1;
         MediaMetadata md = best.getMetadata();
-        if (md != null && md.containsKey(MediaMetadata.METADATA_KEY_DURATION)) duration = md.getLong(MediaMetadata.METADATA_KEY_DURATION);
-        OverlayService.setMediaPosition(position, speed, duration, best.getPackageName(), s.getState() == android.media.session.PlaybackState.STATE_PLAYING);
+        if (md != null && md.containsKey(MediaMetadata.METADATA_KEY_DURATION)) {
+            duration = md.getLong(MediaMetadata.METADATA_KEY_DURATION);
+        }
+        OverlayService.setMediaPosition(position, speed, duration, best.getPackageName(), playing);
     }
 
-    @Override public void onListenerDisconnected() { clearCallbacks(); super.onListenerDisconnected(); }
+    @Override public void onListenerDisconnected() {
+        pollHandler.removeCallbacksAndMessages(null);
+        clearCallbacks();
+        super.onListenerDisconnected();
+    }
+
+    @Override public void onDestroy() {
+        pollHandler.removeCallbacksAndMessages(null);
+        clearCallbacks();
+        super.onDestroy();
+    }
 }

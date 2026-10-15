@@ -84,6 +84,11 @@ public class OverlayService extends Service {
             }
         }else{
             mediaDivergenceCount=0;
+            // If Accessibility has no fresh sample, MediaSession must be allowed
+            // to take over directly; do not require a prior ACCESS-vs-MEDIA conflict.
+            if (accessibilityPosition < 0 || now - accessibilityUpdatedAt >= 3000) {
+                mediaAuthorityUntil = now + 1800;
+            }
         }
     }
 
@@ -91,8 +96,9 @@ public class OverlayService extends Service {
         if(ms<0)return;
         long now=SystemClock.elapsedRealtime();
         if(lastAccessObserved>=0 && Math.abs(ms-lastAccessObserved)>1500){
-            // A large Accessibility jump is itself a valid seek anchor.
-            mediaAuthorityUntil=0;
+            // Do not revoke MediaSession authority based on a single Accessibility
+            // jump: the Accessibility tree can expose duration/other timestamps.
+            // The source selector will return to ACCESS when its samples agree again.
             mediaDivergenceCount=0;
         }
         lastAccessObserved=ms;
@@ -199,10 +205,19 @@ public class OverlayService extends Service {
     private void applyBackground(boolean keepText){if(sub==null)return;int mode=SettingsStore.bgMode(this);if(mode==2||!SettingsStore.bgEnabled(this)||SettingsStore.bgColor(this)==Color.TRANSPARENT){sub.setBackgroundColor(Color.TRANSPARENT);return;}int c=SettingsStore.bgColor(this);int a=(int)(255f*SettingsStore.bgOpacity(this)/100f);c=Color.argb(a,Color.red(c),Color.green(c),Color.blue(c));GradientDrawable g=new GradientDrawable();g.setColor(c);g.setCornerRadius(dp(8));sub.setBackground(g);}
     private void refreshLayout(){if(sub==null||wm==null)return;try{WindowManager.LayoutParams lp=(WindowManager.LayoutParams)sub.getLayoutParams();lp.width=SettingsStore.bgMode(this)==0?-1:-2;lp.height=-2;lp.y=positionY();wm.updateViewLayout(sub,lp);}catch(Exception ignored){}}
 
+    private String currentSource(long now) {
+        boolean accessFresh = accessibilityPosition >= 0 && now - accessibilityUpdatedAt < 3000;
+        boolean mediaFresh = mediaPosition >= 0 && now - mediaUpdatedAt < 1800;
+        if (mediaFresh && (mediaAuthorityUntil > now || !accessFresh)) return "MEDIA";
+        if (accessFresh) return "ACCESS";
+        if (mediaFresh) return "MEDIA";
+        return "MAN";
+    }
+
     private long currentPosition(){
         long now=SystemClock.elapsedRealtime();
-        boolean mediaAuthority=mediaAuthorityUntil>now && mediaPosition>=0 && now-mediaUpdatedAt<5000;
-        if(!mediaAuthority && accessibilityPosition>=0&&now-accessibilityUpdatedAt<3000){
+        String source=currentSource(now);
+        if("ACCESS".equals(source)){
             long pos=accessibilityPosition;
             boolean playing=accessibilityPlaying;
             if(playing){
@@ -212,14 +227,14 @@ public class OverlayService extends Service {
             rememberFallback(pos, playing, now);
             return Math.max(0,(long)(pos*timingScale)+offset);
         }
-        if(mediaPosition>=0&&now-mediaUpdatedAt<5000){
+        if("MEDIA".equals(source)){
             long pos=mediaPosition;
             if(mediaPlaying)pos+=(long)((now-mediaUpdatedAt)*mediaSpeed);
             rememberFallback(pos, mediaPlaying, now);
             return Math.max(0,(long)(pos*timingScale)+offset);
         }
-        // Never use uptimeMillis() directly as a video timestamp: it measures
-        // time since device boot and can produce impossible positions (e.g. 90 min).
+        // No live source: retain the last valid video-time anchor. Never use
+        // device uptime as if it were the video's position.
         long pos=fallbackPosition;
         if(fallbackHasAnchor && fallbackPlaying){
             float sp=(mediaSpeed>0f&&mediaSpeed<4f)?mediaSpeed:1f;
@@ -257,7 +272,7 @@ public class OverlayService extends Service {
             int pad=dp(bp);sub.setPadding(pad,pad,pad,pad);applyBackground(false);refreshLayout();lastBgMode=bm;lastBgPadding=bp;lastBgOpacity=bo;
         }
         if(pp!=lastPosition){refreshLayout();lastPosition=pp;}
-        if(info!=null){long now=SystemClock.elapsedRealtime();String mode=(mediaAuthorityUntil>now&&mediaPosition>=0)?"MEDIA":((accessibilityPosition>=0&&now-accessibilityUpdatedAt<3000)?"ACCESS":"MAN");info.setText(mode+" "+fmt(pos)+(mediaDuration>0?" / "+fmt(mediaDuration):""));}
+        if(info!=null){long now=SystemClock.elapsedRealtime();String mode=currentSource(now);info.setText(mode+" "+fmt(pos)+(mediaDuration>0?" / "+fmt(mediaDuration):""));}
         h.postDelayed(this,80);
     }};
     private String fmt(long ms){long sec=Math.max(0,ms)/1000;long m=sec/60;long s=sec%60;return String.format(Locale.US,"%02d:%02d",m,s);}

@@ -16,3 +16,11 @@ Based on stable v0.3.4.2 and the verified v1.1.1 synchronization fixes. Preserve
 - Overlay control buttons also have clearer pressed/hover states.
 
 Build with GitHub Actions using the included workflow.
+
+
+## v1.2.2 sync reliability changes
+- Poll active Android MediaSessions every 500 ms so the overlay receives fresh playback position even when the session does not emit frequent callbacks.
+- Refresh the active session list periodically and prioritize a playing session over a stale paused session.
+- Permit direct MEDIA takeover when Accessibility samples are absent or stale.
+- Use the same source-selection decision for displayed status and subtitle timing.
+- Keep the last valid fallback anchor; do not derive video time from device uptime.
