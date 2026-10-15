@@ -25,9 +25,6 @@ public class MainActivity extends Activity {
     TextView status, status2, libraryStatus, fontStatus;
     TextView overlayCheck, notificationCheck, accessibilityCheck;
     LinearLayout root;
-    private boolean firstResume=true;
-    private final Handler statusHandler=new Handler(Looper.getMainLooper());
-    private final Runnable statusPoll=new Runnable(){ @Override public void run(){ refreshPermissionStatus(); statusHandler.postDelayed(this,1000); } };
     Spinner sizeSpinner, fontSpinner, speedSpinner, positionSpinner, bgModeSpinner, bgPaddingSpinner, bgOpacitySpinner;
 
     final int[] colors={Color.WHITE,Color.YELLOW,Color.CYAN,Color.GREEN,Color.RED};
@@ -65,7 +62,7 @@ public class MainActivity extends Activity {
         title.setText("Subtitle Overlay"); title.setTextSize(26); title.setTextColor(text()); title.setTypeface(null,1);
         root.addView(title,lp(-1,-2,0,0,0,4));
         TextView version=new TextView(this);
-        version.setText("v1.1.2 • stable sync + unified UI"); version.setTextSize(13); version.setTextColor(muted());
+        version.setText("v1.2.0 • stable sync + improved UI"); version.setTextSize(13); version.setTextColor(muted());
         root.addView(version,lp(-1,-2,0,0,0,14));
 
         buildPrimarySection();
@@ -104,11 +101,11 @@ public class MainActivity extends Activity {
         Button clear=outlineButton("Clear Secondary Subtitle"); clear.setOnClickListener(v->{uri2=null;SettingsStore.secondaryUri(this,"");status2.setText("No secondary subtitle selected");}); card.addView(clear,fullButtonParams());
         CheckBox dual=new CheckBox(this);
         dual.setText("Enable dual subtitles"); dual.setTextSize(16); dual.setTextColor(text()); dual.setChecked(SettingsStore.doubleSubtitle(this));
-        dual.setOnCheckedChangeListener((b,checked)->{SettingsStore.doubleSubtitle(this,checked);if(OverlayService.instance!=null)OverlayService.instance.refreshSubtitlesFromSettings();});
+        dual.setOnCheckedChangeListener((b,checked)->SettingsStore.doubleSubtitle(this,checked));
         card.addView(dual,lp(-1,-2,0,8,0,0));
         CheckBox reverse=new CheckBox(this);
         reverse.setText("Show secondary subtitle above primary"); reverse.setTextSize(14); reverse.setTextColor(text()); reverse.setChecked(SettingsStore.secondaryFirst(this));
-        reverse.setOnCheckedChangeListener((b,checked)->{SettingsStore.secondaryFirst(this,checked);if(OverlayService.instance!=null)OverlayService.instance.refreshSubtitlesFromSettings();});
+        reverse.setOnCheckedChangeListener((b,checked)->SettingsStore.secondaryFirst(this,checked));
         card.addView(reverse,lp(-1,-2,0,0,0,0));
         TextView hint=smallText("Both subtitles share the same appearance and video sync. Only the secondary timing offset can be adjusted separately.");
         card.addView(hint,lp(-1,-2,0,6,0,0));
@@ -135,7 +132,7 @@ public class MainActivity extends Activity {
     private Spinner positionSpinner(){
         positionSpinner=spinner(new String[]{"Bottom","Lower","Center","Upper","Top"});
         positionSpinner.setSelection(SettingsStore.position(this));
-        positionSpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){SettingsStore.position(MainActivity.this,pos);if(OverlayService.instance!=null)OverlayService.instance.refreshAppearance();}});
+        positionSpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){SettingsStore.position(MainActivity.this,pos);}});
         return positionSpinner;
     }
 
@@ -144,13 +141,13 @@ public class MainActivity extends Activity {
         card.addView(sectionTitle("4. Background"));
         card.addView(colorRow("Background color",true));
         bgModeSpinner=spinner(new String[]{"Full Width","Fit to Subtitle","No Background"}); bgModeSpinner.setSelection(SettingsStore.bgMode(this));
-        bgModeSpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){SettingsStore.bgMode(MainActivity.this,pos);if(OverlayService.instance!=null)OverlayService.instance.refreshAppearance();}}); card.addView(row("Background mode",bgModeSpinner));
+        bgModeSpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){SettingsStore.bgMode(MainActivity.this,pos);}}); card.addView(row("Background mode",bgModeSpinner));
         bgPaddingSpinner=spinner(new String[]{"0 px","2 px","4 px","6 px","8 px","12 px","16 px"});
         int bp=indexOfInt(new int[]{0,2,4,6,8,12,16},SettingsStore.bgPadding(this)); bgPaddingSpinner.setSelection(bp);
-        bgPaddingSpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){SettingsStore.bgPadding(MainActivity.this,Integer.parseInt(p.getItemAtPosition(pos).toString().replace(" px","")));if(OverlayService.instance!=null)OverlayService.instance.refreshAppearance();}}); card.addView(row("Padding",bgPaddingSpinner));
+        bgPaddingSpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){SettingsStore.bgPadding(MainActivity.this,Integer.parseInt(p.getItemAtPosition(pos).toString().replace(" px","")));}}); card.addView(row("Padding",bgPaddingSpinner));
         bgOpacitySpinner=spinner(new String[]{"30%","50%","70%","85%","100%"});
         int bo=indexOfInt(new int[]{30,50,70,85,100},SettingsStore.bgOpacity(this)); bgOpacitySpinner.setSelection(bo);
-        bgOpacitySpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){SettingsStore.bgOpacity(MainActivity.this,Integer.parseInt(p.getItemAtPosition(pos).toString().replace("%","")));if(OverlayService.instance!=null)OverlayService.instance.refreshAppearance();}}); card.addView(row("Opacity",bgOpacitySpinner));
+        bgOpacitySpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){SettingsStore.bgOpacity(MainActivity.this,Integer.parseInt(p.getItemAtPosition(pos).toString().replace("%","")));}}); card.addView(row("Opacity",bgOpacitySpinner));
         root.addView(card,cardParams());
     }
 
@@ -172,10 +169,6 @@ public class MainActivity extends Activity {
         overlayCheck=permissionRow(card,"Overlay permission",v->startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName()))));
         notificationCheck=permissionRow(card,"Notifications & Media Session",v->openNotificationSettings());
         accessibilityCheck=permissionRow(card,"Accessibility sync",v->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
-        Spinner hideSpinner=spinner(new String[]{"3 seconds","5 seconds","10 seconds","Always visible"});
-        int hide=SettingsStore.controlsAutoHide(this); int hideIdx=hide==5?1:(hide==10?2:(hide==0?3:0)); hideSpinner.setSelection(hideIdx);
-        hideSpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){int[] vals={3,5,10,0};SettingsStore.controlsAutoHide(MainActivity.this,vals[pos]);if(OverlayService.instance!=null)OverlayService.instance.refreshControlsVisibilityFromSettings();}});
-        card.addView(row("Overlay controls auto-hide",hideSpinner));
         TextView mediaHint=smallText("Media Session sync uses Notification Access. Enable it below if you want automatic MediaSession fallback.");
         card.addView(mediaHint,lp(-1,-2,0,2,0,4));
         Button media=secondaryButton("Enable Media Session / Notification Access"); media.setOnClickListener(v->startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))); card.addView(media,fullButtonParams());
@@ -189,7 +182,7 @@ public class MainActivity extends Activity {
 
     private TextView permissionRow(LinearLayout parent,String label,View.OnClickListener action){
         LinearLayout r=new LinearLayout(this); r.setGravity(Gravity.CENTER_VERTICAL); r.setPadding(0,dp(5),0,dp(5));
-        TextView check=new TextView(this); check.setTextSize(14); check.setGravity(Gravity.CENTER_VERTICAL); check.setMinWidth(dp(30));
+        TextView check=new TextView(this); check.setTextSize(18); check.setGravity(Gravity.CENTER); check.setMinWidth(dp(30));
         TextView name=new TextView(this); name.setText(label); name.setTextSize(15); name.setTextColor(text()); name.setTypeface(null,1); name.setLayoutParams(new LinearLayout.LayoutParams(0,-2,1));
         Button open=outlineButton("Settings"); open.setTextSize(12); open.setMinHeight(dp(38)); open.setOnClickListener(action);
         r.addView(check); r.addView(name); r.addView(open,new LinearLayout.LayoutParams(dp(100),dp(40))); parent.addView(r);
@@ -220,33 +213,17 @@ public class MainActivity extends Activity {
         if(overlayCheck==null)return;
         setCheck(overlayCheck,Settings.canDrawOverlays(this));
         setCheck(notificationCheck,notificationEnabled() && notificationListenerEnabled());
-        boolean accEnabled=accessibilityEnabled();
-        boolean accWorking=accEnabled && SubtitleAccessibilityService.isWorking();
-        if(!accEnabled){
-            accessibilityCheck.setText("! Disabled");
-            accessibilityCheck.setTextColor(DANGER);
-            accessibilityCheck.setContentDescription("Accessibility disabled");
-        }else if(accWorking){
-            accessibilityCheck.setText("✓ Working");
-            accessibilityCheck.setTextColor(Color.rgb(46,125,50));
-            accessibilityCheck.setContentDescription("Accessibility working");
-        }else{
-            accessibilityCheck.setText("⚠ Not working");
-            accessibilityCheck.setTextColor(Color.rgb(245,124,0));
-            accessibilityCheck.setContentDescription("Accessibility enabled but not working");
-        }
-        accessibilityCheck.setTypeface(null,1);
+        setCheck(accessibilityCheck,accessibilityEnabled());
     }
     private void setCheck(TextView v,boolean ok){ v.setText(ok?"✓":"!"); v.setTextColor(ok?Color.rgb(46,125,50):DANGER); v.setTypeface(null,1); v.setContentDescription(ok?"Enabled":"Needs attention"); }
 
-    @Override protected void onResume(){ super.onResume(); if(!firstResume) build(); firstResume=false; refreshPermissionStatus(); statusHandler.removeCallbacks(statusPoll); statusHandler.postDelayed(statusPoll,500); }
-    @Override protected void onPause(){ statusHandler.removeCallbacks(statusPoll); super.onPause(); }
+    @Override protected void onResume(){ super.onResume(); refreshPermissionStatus(); }
 
     private void addOffsetControls(LinearLayout parent,long initial,boolean second){
         TextView off=smallText("Current offset: "+formatOffset(initial)); parent.addView(off,lp(-1,-2,0,0,0,2));
         SeekBar seek=new SeekBar(this); seek.setMax(120); seek.setProgress(Math.max(0,Math.min(120,(int)(initial/500)+60)));
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onProgressChanged(SeekBar s,int p,boolean f){long v=(p-60)*500L;if(second)SettingsStore.offset2(MainActivity.this,v);else SettingsStore.offset(MainActivity.this,v);if(OverlayService.instance!=null)OverlayService.instance.refreshTimingFromSettings();off.setText("Current offset: "+formatOffset(v));}
+            public void onProgressChanged(SeekBar s,int p,boolean f){long v=(p-60)*500L;if(second)SettingsStore.offset2(MainActivity.this,v);else SettingsStore.offset(MainActivity.this,v);off.setText("Current offset: "+formatOffset(v));}
             public void onStartTrackingTouch(SeekBar s){} public void onStopTrackingTouch(SeekBar s){}
         }); parent.addView(seek,lp(-1,-2,0,0,0,4));
     }
@@ -298,7 +275,7 @@ public class MainActivity extends Activity {
     private LinearLayout colorSlider(String label,SeekBar seek){LinearLayout r=new LinearLayout(this);r.setGravity(Gravity.CENTER_VERTICAL);TextView t=new TextView(this);t.setText(label);t.setTextColor(text());t.setTextSize(13);t.setLayoutParams(new LinearLayout.LayoutParams(dp(50),-2));r.addView(t);r.addView(seek,new LinearLayout.LayoutParams(0,-2,1));return r;}
 
     private Spinner spinner(String[] a){Spinner s=new Spinner(this);s.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,a));return s;}
-    private void setSpinnerFloat(Spinner s,float[] vals,float current){int idx=0;for(int i=0;i<vals.length;i++)if(Math.abs(vals[i]-current)<0.001){idx=i;break;}s.setSelection(idx);s.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){if(p==sizeSpinner){SettingsStore.size(MainActivity.this,vals[pos]);}else{SettingsStore.speed(MainActivity.this,vals[pos]);}if(OverlayService.instance!=null)OverlayService.instance.refreshAppearance();}});}
+    private void setSpinnerFloat(Spinner s,float[] vals,float current){int idx=0;for(int i=0;i<vals.length;i++)if(Math.abs(vals[i]-current)<0.001){idx=i;break;}s.setSelection(idx);s.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){if(p==sizeSpinner)SettingsStore.size(MainActivity.this,vals[pos]);else SettingsStore.speed(MainActivity.this,vals[pos]);}});}
     private int indexOf(String[] a,String v){for(int i=0;i<a.length;i++)if(a[i].equals(v))return i;return 0;}
     private int indexOfInt(int[] a,int v){for(int i=0;i<a.length;i++)if(a[i]==v)return i;return 0;}
     private String formatOffset(long v){return (v>=0?"+":"")+(v/1000f)+" s";}

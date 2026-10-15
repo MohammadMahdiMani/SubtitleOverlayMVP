@@ -48,9 +48,6 @@ public final class SettingsStore {
     public static void doubleSubtitle(Context c,boolean v){ c.getSharedPreferences(PREF,0).edit().putBoolean("double_subtitle",v).apply(); }
     public static boolean secondaryFirst(Context c){ return c.getSharedPreferences(PREF,0).getBoolean("secondary_first",false); }
     public static void secondaryFirst(Context c,boolean v){ c.getSharedPreferences(PREF,0).edit().putBoolean("secondary_first",v).apply(); }
-    // Overlay controls auto-hide: 0 = always visible, otherwise seconds.
-    public static int controlsAutoHide(Context c){ return c.getSharedPreferences(PREF,0).getInt("controls_auto_hide",3); }
-    public static void controlsAutoHide(Context c,int v){ c.getSharedPreferences(PREF,0).edit().putInt("controls_auto_hide",v==0?0:Math.max(1,Math.min(60,v))).apply(); }
 
     // 0 = bottom, 1 = lower, 2 = center, 3 = upper, 4 = top.
     public static int position(Context c){ return c.getSharedPreferences(PREF,0).getInt("position",0); }

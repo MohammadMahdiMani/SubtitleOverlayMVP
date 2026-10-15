@@ -3,7 +3,6 @@ package com.example.subtitleoverlay;
 import android.accessibilityservice.AccessibilityService;
 import android.os.Handler;
 import android.os.Looper;
-import android.os.SystemClock;
 import android.view.accessibility.AccessibilityNodeInfo;
 import android.view.accessibility.AccessibilityEvent;
 import java.util.regex.Matcher;
@@ -13,10 +12,6 @@ public class SubtitleAccessibilityService extends AccessibilityService {
     private static volatile String activePackage;
     private static final Pattern TIME = Pattern.compile("(?<!\\d)(\\d{1,2}):(\\d{2})(?::(\\d{2}))?(?!\\d)");
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private static volatile long serviceAliveAt;
-    public static boolean isWorking() {
-        return serviceAliveAt > 0 && SystemClock.elapsedRealtime() - serviceAliveAt < 2500;
-    }
     private final Runnable poll = new Runnable() {
         @Override public void run() {
             scanCurrentWindow();
@@ -28,7 +23,6 @@ public class SubtitleAccessibilityService extends AccessibilityService {
 
     @Override public void onServiceConnected() {
         super.onServiceConnected();
-        serviceAliveAt=SystemClock.elapsedRealtime();
         handler.removeCallbacks(poll);
         handler.post(poll);
     }
@@ -39,7 +33,6 @@ public class SubtitleAccessibilityService extends AccessibilityService {
     }
 
     private void scanCurrentWindow() {
-        serviceAliveAt=SystemClock.elapsedRealtime();
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) return;
         try {
@@ -99,7 +92,6 @@ public class SubtitleAccessibilityService extends AccessibilityService {
     @Override public void onInterrupt() {}
 
     @Override public void onDestroy() {
-        serviceAliveAt=0;
         handler.removeCallbacksAndMessages(null);
         super.onDestroy();
     }
