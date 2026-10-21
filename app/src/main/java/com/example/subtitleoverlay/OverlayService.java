@@ -22,7 +22,6 @@ public class OverlayService extends Service {
     private List<SrtCue> cues=new ArrayList<>(), cues2=new ArrayList<>();
     private final Handler h=new Handler(Looper.getMainLooper());
     private long offset, offset2;
-    private float timingScale;
     // Last trustworthy video-time anchor used only when both external sources go stale.
     private long fallbackPosition=0, fallbackUpdatedAt=0;
     private boolean fallbackHasAnchor=false, fallbackPlaying=true;
@@ -32,6 +31,7 @@ public class OverlayService extends Service {
     private long manualPosition, manualStartedAt;
     private float manualSpeed=1f;
     private long controlsHideAt;
+    private Button offsetMinusButton, offsetPlusButton, offsetResetButton, speedButton;
     private static volatile long mediaPosition=-1, mediaDuration=-1, mediaUpdatedAt;
     private static volatile float mediaSpeed=1f;
     private static volatile boolean mediaPlaying=false;
@@ -64,7 +64,7 @@ public class OverlayService extends Service {
         NotificationChannel c=new NotificationChannel("sub","Subtitle Overlay",NotificationManager.IMPORTANCE_LOW);
         getSystemService(NotificationManager.class).createNotificationChannel(c);
         startForeground(9,new Notification.Builder(this,"sub").setContentTitle("Subtitle Overlay running").setSmallIcon(android.R.drawable.ic_media_play).setOngoing(true).build());
-        offset=SettingsStore.offset(this); offset2=SettingsStore.offset2(this); timingScale=SettingsStore.speed(this);
+        offset=SettingsStore.offset(this); offset2=SettingsStore.offset2(this);
         manualMode=SettingsStore.manualMode(this);
         sourceMode=SettingsStore.sourceMode(this);
         manualPosition=SettingsStore.manualPosition(this);
@@ -117,7 +117,7 @@ public class OverlayService extends Service {
         add(row,"Sync",v->showSyncDialog());
         add(row,"A−",v->changeSize(-2));add(row,"A+",v->changeSize(2));add(row,"Color",v->cycleTextColor());add(row,"BG",v->cycleBg());add(row,"Font",v->cycleFont());add(row,"Pos",v->cyclePosition());
         add(row,"BG Mode",v->cycleBgMode());add(row,"Pad",v->cycleBgPadding());add(row,"Opacity",v->cycleBgOpacity());
-        add(row,"−0.5s",v->changeOffset(-500));add(row,"+0.5s",v->changeOffset(500));add(row,"Offset 0",v->resetOffset());add(row,"Speed",v->cycleSpeed());
+        offsetMinusButton=add(row,"−0.5s",v->changeOffset(-500)); offsetPlusButton=add(row,"+0.5s",v->changeOffset(500)); offsetResetButton=add(row,"Offset 0",v->resetOffset()); speedButton=add(row,"Speed",v->cycleSpeed()); updateManualTimingButtons();
         add(row,run?"Pause":"Play",v->{toggleRun((Button)v);});
         add(row,"✕",v->stopSelf());scroll.addView(row);ctl=scroll;
         WindowManager.LayoutParams q=new WindowManager.LayoutParams(-2,-2,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT);
@@ -138,7 +138,7 @@ public class OverlayService extends Service {
         android.graphics.drawable.StateListDrawable st=new android.graphics.drawable.StateListDrawable();st.addState(new int[]{android.R.attr.state_pressed},p);st.addState(new int[]{android.R.attr.state_hovered},p);st.addState(new int[]{},n);b.setBackground(st);b.setTextColor(Color.WHITE);
         b.setOnTouchListener((v,e)->{if(e.getAction()==MotionEvent.ACTION_DOWN)touchControls();return false;});return b;
     }
-    private void add(LinearLayout row,String text,View.OnClickListener l){Button b=button(text);b.setOnClickListener(l);row.addView(b);}
+    private Button add(LinearLayout row,String text,View.OnClickListener l){Button b=button(text);b.setOnClickListener(l);row.addView(b);return b;}
     private void touchControls(){controlsHideAt=SystemClock.elapsedRealtime()+3000;if(ctl!=null)ctl.setVisibility(View.VISIBLE);setSubtitleTouchEnabled(false);}
     private void updateControlsVisibility(){if(ctl!=null&&SystemClock.elapsedRealtime()>=controlsHideAt){ctl.setVisibility(View.GONE);setSubtitleTouchEnabled(true);}}
     private void setSubtitleTouchEnabled(boolean enabled){if(sub==null||wm==null)return;try{WindowManager.LayoutParams lp=(WindowManager.LayoutParams)sub.getLayoutParams();int flags=WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;if(!enabled)flags|=WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;lp.flags=flags;wm.updateViewLayout(sub,lp);}catch(Exception ignored){}}
@@ -159,9 +159,40 @@ public class OverlayService extends Service {
     private void cycleBg(){int c=SettingsStore.bgColor(this);int next=BG_COLORS[0];for(int i=0;i<BG_COLORS.length;i++)if(BG_COLORS[i]==c){next=BG_COLORS[(i+1)%BG_COLORS.length];break;}SettingsStore.bgColor(this,next);SettingsStore.bgEnabled(this,next!=Color.TRANSPARENT);applyBackground(true);touchControls();}
     private void cycleFont(){String f=SettingsStore.font(this);int idx=0;for(int i=0;i<FONTS.length;i++)if(FONTS[i].equals(f)){idx=i;break;}String next=FONTS[(idx+1)%FONTS.length];if("custom".equals(next)&&!SettingsStore.hasCustomFont(this))next=FONTS[0];SettingsStore.font(this,next);if(sub!=null){sub.setTypeface(SettingsStore.typeface(this,next));refreshLayout();}touchControls();}
     private void cyclePosition(){int p=(SettingsStore.position(this)+1)%5;SettingsStore.position(this,p);if(sub!=null&&wm!=null)try{WindowManager.LayoutParams lp=(WindowManager.LayoutParams)sub.getLayoutParams();lp.y=positionY();wm.updateViewLayout(sub,lp);}catch(Exception ignored){}touchControls();}
-    private void changeOffset(long d){offset+=d;SettingsStore.offset(this,offset);touchControls();}
-    private void resetOffset(){offset=0;SettingsStore.offset(this,0);touchControls();}
-    private void cycleSpeed(){float[] speeds={0.75f,0.9f,1f,1.1f,1.25f,1.5f};float cur=SettingsStore.speed(this);int idx=2;for(int i=0;i<speeds.length;i++)if(Math.abs(speeds[i]-cur)<0.001){idx=i;break;}timingScale=speeds[(idx+1)%speeds.length];SettingsStore.speed(this,timingScale);touchControls();}
+    private void updateManualTimingButtons(){
+        boolean enabled=manualMode;
+        if(offsetMinusButton!=null)offsetMinusButton.setEnabled(enabled);
+        if(offsetPlusButton!=null)offsetPlusButton.setEnabled(enabled);
+        if(offsetResetButton!=null)offsetResetButton.setEnabled(enabled);
+        if(speedButton!=null)speedButton.setEnabled(enabled);
+    }
+
+    public void refreshManualTimingSettings(){
+        float savedSpeed=SettingsStore.manualSpeed(this);
+        if(manualMode && Math.abs(savedSpeed-manualSpeed)>0.001f){
+            manualPosition=currentPosition();
+            manualStartedAt=SystemClock.elapsedRealtime();
+            SettingsStore.manualPosition(this,manualPosition);
+        }
+        offset=SettingsStore.offset(this);
+        offset2=SettingsStore.offset2(this);
+        manualSpeed=savedSpeed;
+        manualMode=SettingsStore.manualMode(this);
+        updateManualTimingButtons();
+        if(info!=null)touchControls();
+    }
+    private void changeOffset(long d){if(!manualMode)return;offset+=d;SettingsStore.offset(this,offset);touchControls();}
+    private void resetOffset(){if(!manualMode)return;offset=0;SettingsStore.offset(this,0);touchControls();}
+    private void cycleSpeed(){
+        if(!manualMode)return;
+        float[] speeds={0.5f,0.75f,0.9f,1f,1.1f,1.25f,1.5f,1.75f,2f};float cur=SettingsStore.manualSpeed(this);int idx=3;
+        for(int i=0;i<speeds.length;i++)if(Math.abs(speeds[i]-cur)<0.001f){idx=i;break;}
+        long now=SystemClock.elapsedRealtime();
+        manualPosition=currentPosition();
+        manualStartedAt=now;
+        SettingsStore.manualPosition(this,manualPosition);
+        manualSpeed=speeds[(idx+1)%speeds.length];SettingsStore.manualSpeed(this,manualSpeed);touchControls();
+    }
     private void cycleBgMode(){SettingsStore.bgMode(this,(SettingsStore.bgMode(this)+1)%3);applyBackground(true);refreshLayout();touchControls();}
     private void cycleBgPadding(){int[] vals={0,2,4,6,8,12,16};int cur=SettingsStore.bgPadding(this),idx=0;for(int i=0;i<vals.length;i++)if(vals[i]==cur){idx=i;break;}SettingsStore.bgPadding(this,vals[(idx+1)%vals.length]);if(sub!=null){int p=dp(SettingsStore.bgPadding(this));sub.setPadding(p,p,p,p);refreshLayout();}touchControls();}
     private void cycleBgOpacity(){int[] vals={30,50,70,85,100};int cur=SettingsStore.bgOpacity(this),idx=2;for(int i=0;i<vals.length;i++)if(vals[i]==cur){idx=i;break;}SettingsStore.bgOpacity(this,vals[(idx+1)%vals.length]);applyBackground(true);touchControls();}
@@ -196,13 +227,13 @@ public class OverlayService extends Service {
                 pos+=(long)((now-accessibilityUpdatedAt)*sp);
             }
             rememberFallback(pos, playing, now);
-            return Math.max(0,(long)(pos*timingScale));
+            return Math.max(0,pos);
         }
         if("MEDIA".equals(source)){
             long pos=mediaPosition;
             if(mediaPlaying)pos+=(long)((now-mediaUpdatedAt)*mediaSpeed);
             rememberFallback(pos, mediaPlaying, now);
-            return Math.max(0,(long)(pos*timingScale));
+            return Math.max(0,pos);
         }
         // No live source: retain the last valid video-time anchor. Never use device uptime.
         long pos=fallbackPosition;
@@ -210,7 +241,7 @@ public class OverlayService extends Service {
             float sp=(mediaSpeed>0f&&mediaSpeed<4f)?mediaSpeed:1f;
             pos+=(long)((now-fallbackUpdatedAt)*sp);
         }
-        return Math.max(0,(long)(pos*timingScale));
+        return Math.max(0,pos);
     }
 
     private void showSyncDialog(){
@@ -224,19 +255,27 @@ public class OverlayService extends Service {
         Spinner speed=new Spinner(this); String[] speedLabels={"0.5x","0.75x","0.9x","1.0x","1.1x","1.25x","1.5x","1.75x","2.0x"}; float[] speedValues={0.5f,0.75f,0.9f,1f,1.1f,1.25f,1.5f,1.75f,2f}; speed.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,speedLabels)); int selected=3; for(int j=0;j<speedValues.length;j++)if(Math.abs(speedValues[j]-manualSpeed)<0.001f){selected=j;break;} speed.setSelection(selected); box.addView(speed);
         TextView offsetLabel=new TextView(this); offsetLabel.setText("Subtitle offset in seconds (+ later / − earlier)"); box.addView(offsetLabel);
         EditText off=new EditText(this); off.setSingleLine(true); off.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_SIGNED|InputType.TYPE_NUMBER_FLAG_DECIMAL); off.setText(String.format(Locale.US,"%.3f",offset/1000f)); box.addView(off);
+        Runnable updateManualFields=()->{boolean enabled=manual.isChecked();time.setEnabled(enabled);speed.setEnabled(enabled);off.setEnabled(enabled);timeLabel.setEnabled(enabled);speedLabel.setEnabled(enabled);offsetLabel.setEnabled(enabled);};
+        manual.setOnCheckedChangeListener((button,checked)->updateManualFields.run());
+        updateManualFields.run();
         AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Subtitle synchronization").setView(box)
             .setPositiveButton("Start / Apply",(d,w)->{
                 boolean useManual=manual.isChecked();
                 try{
-                    long entered=parseLongTime(time.getText().toString());
-                    float newSpeed=speedValues[Math.max(0,Math.min(speedValues.length-1,speed.getSelectedItemPosition()))];
-                    double offSeconds=Double.parseDouble(off.getText().toString().trim().replace(',','.'));
-                    offset=(long)(offSeconds*1000d); SettingsStore.offset(this,offset);
                     long handoffPosition=currentPosition();
                     sourceMode=Math.max(0,Math.min(2,source.getSelectedItemPosition())); SettingsStore.sourceMode(this,sourceMode);
+                    if(useManual){
+                        long entered=parseLongTime(time.getText().toString());
+                        float newSpeed=speedValues[Math.max(0,Math.min(speedValues.length-1,speed.getSelectedItemPosition()))];
+                        double offSeconds=Double.parseDouble(off.getText().toString().trim().replace(',','.'));
+                        offset=(long)(offSeconds*1000d); SettingsStore.offset(this,offset);
+                        manualPosition=entered;manualSpeed=newSpeed;manualStartedAt=SystemClock.elapsedRealtime();run=true;
+                        SettingsStore.manualPosition(this,entered);SettingsStore.manualSpeed(this,newSpeed);
+                    } else {
+                        fallbackPosition=Math.max(0,handoffPosition);fallbackUpdatedAt=SystemClock.elapsedRealtime();fallbackHasAnchor=true;fallbackPlaying=true;
+                    }
                     manualMode=useManual; SettingsStore.manualMode(this,useManual);
-                    if(useManual){manualPosition=entered;manualSpeed=newSpeed;manualStartedAt=SystemClock.elapsedRealtime();run=true;SettingsStore.manualPosition(this,entered);SettingsStore.manualSpeed(this,newSpeed);}
-                    else { fallbackPosition=Math.max(0,handoffPosition);fallbackUpdatedAt=SystemClock.elapsedRealtime();fallbackHasAnchor=true;fallbackPlaying=true; }
+                    updateManualTimingButtons();
                     touchControls();
                 }catch(Exception ex){Toast.makeText(this,"Invalid time or offset. Use MM:SS / HH:MM:SS and a numeric offset.",Toast.LENGTH_LONG).show();}
             }).setNegativeButton("Cancel",null).create();
@@ -264,7 +303,9 @@ public class OverlayService extends Service {
     }
     private SrtCue find(List<SrtCue> list,long raw){for(SrtCue c:list){if(raw>=c.startMs&&raw<=c.endMs)return c;if(c.startMs>raw)break;}return null;}
     private String combineText(long videoPos){
-        SrtCue a=find(cues,videoPos-offset), b=find(cues2,videoPos-offset2);
+        long primaryOffset=manualMode?offset:0L;
+        long secondaryOffset=manualMode?offset2:0L;
+        SrtCue a=find(cues,videoPos-primaryOffset), b=find(cues2,videoPos-secondaryOffset);
         if(!SettingsStore.doubleSubtitle(this)||cues2.isEmpty())return a==null?"":a.text;
         String first=SettingsStore.secondaryFirst(this)?(b==null?"":b.text):(a==null?"":a.text);
         String second=SettingsStore.secondaryFirst(this)?(a==null?"":a.text):(b==null?"":b.text);

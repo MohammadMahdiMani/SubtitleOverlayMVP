@@ -24,3 +24,9 @@ Build with GitHub Actions using the included workflow.
 - Permit direct MEDIA takeover when Accessibility samples are absent or stale.
 - Use the same source-selection decision for displayed status and subtitle timing.
 - Keep the last valid fallback anchor; do not derive video time from device uptime.
+
+
+## v1.3.1 — Manual Timing Controls Gate
+- Speed and subtitle offsets are editable/active only when Manual Override is enabled.
+- Automatic ACCESS/MEDIA/HOLD position is no longer scaled by manual timing settings, and offsets are ignored in automatic mode.
+- Manual playback speed is shared between the overlay Sync dialog and app timing controls.

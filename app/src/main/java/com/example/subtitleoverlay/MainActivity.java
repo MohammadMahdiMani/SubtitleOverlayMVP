@@ -32,7 +32,8 @@ public class MainActivity extends Activity {
     final String[] fontLabels={"Sans","Sans Medium","Condensed","Serif","Monospace","Custom"};
     final String[] fontVals={"sans-serif","sans-serif-medium","sans-serif-condensed","serif","monospace","custom"};
     final float[] sizes={16,20,24,28,32,40,48,56,64};
-    final float[] speeds={0.75f,0.9f,1f,1.1f,1.25f,1.5f};
+    final float[] speeds={0.5f,0.75f,0.9f,1f,1.1f,1.25f,1.5f,1.75f,2f};
+    final List<View> manualTimingControls=new ArrayList<>();
 
     final int PRIMARY=Color.rgb(63,81,181);
     final int PRIMARY_DARK=Color.rgb(48,63,159);
@@ -62,7 +63,7 @@ public class MainActivity extends Activity {
         title.setText("Subtitle Overlay"); title.setTextSize(26); title.setTextColor(text()); title.setTypeface(null,1);
         root.addView(title,lp(-1,-2,0,0,0,4));
         TextView version=new TextView(this);
-        version.setText("v1.3.0 • automatic sync + manual override"); version.setTextSize(13); version.setTextColor(muted());
+        version.setText("v1.3.1 • manual timing controls"); version.setTextSize(13); version.setTextColor(muted());
         root.addView(version,lp(-1,-2,0,0,0,14));
 
         buildPrimarySection();
@@ -155,10 +156,11 @@ public class MainActivity extends Activity {
         LinearLayout card=card();
         card.addView(sectionTitle("5. Timing & sync"));
         speedSpinner=spinner(new String[]{"0.75x","0.9x","1.0x","1.1x","1.25x","1.5x"});
-        setSpinnerFloat(speedSpinner,speeds,SettingsStore.speed(this)); card.addView(row("Subtitle timing speed",speedSpinner));
+        setSpinnerFloat(speedSpinner,speeds,SettingsStore.manualSpeed(this)); card.addView(row("Manual playback speed",speedSpinner));
+        manualTimingControls.add(speedSpinner);
         card.addView(label("Primary subtitle offset")); addOffsetControls(card,SettingsStore.offset(this),false);
         card.addView(label("Secondary subtitle offset")); addOffsetControls(card,SettingsStore.offset2(this),true);
-        TextView hint=smallText("Automatic mode uses MediaSession while it is actively playing, then Accessibility as fallback. Use the Sync button in overlay controls to manually set a start time, playback speed, and subtitle offset.");
+        TextView hint=smallText("Playback speed and subtitle offsets are only active in Manual Override. Enable it from the overlay Sync button; automatic source timing is not modified by these controls.");
         card.addView(hint,lp(-1,-2,0,8,0,0));
         root.addView(card,cardParams());
     }
@@ -217,13 +219,18 @@ public class MainActivity extends Activity {
     }
     private void setCheck(TextView v,boolean ok){ v.setText(ok?"✓":"!"); v.setTextColor(ok?Color.rgb(46,125,50):DANGER); v.setTypeface(null,1); v.setContentDescription(ok?"Enabled":"Needs attention"); }
 
-    @Override protected void onResume(){ super.onResume(); refreshPermissionStatus(); }
+    @Override protected void onResume(){ super.onResume(); refreshPermissionStatus(); refreshManualTimingControls(); }
+
+    private void refreshManualTimingControls(){
+        boolean enabled=SettingsStore.manualMode(this);
+        for(View control:manualTimingControls){control.setEnabled(enabled);control.setAlpha(enabled?1f:0.45f);}
+    }
 
     private void addOffsetControls(LinearLayout parent,long initial,boolean second){
         TextView off=smallText("Current offset: "+formatOffset(initial)); parent.addView(off,lp(-1,-2,0,0,0,2));
-        SeekBar seek=new SeekBar(this); seek.setMax(120); seek.setProgress(Math.max(0,Math.min(120,(int)(initial/500)+60)));
+        SeekBar seek=new SeekBar(this); seek.setMax(120); seek.setProgress(Math.max(0,Math.min(120,(int)(initial/500)+60))); manualTimingControls.add(seek);
         seek.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
-            public void onProgressChanged(SeekBar s,int p,boolean f){long v=(p-60)*500L;if(second)SettingsStore.offset2(MainActivity.this,v);else SettingsStore.offset(MainActivity.this,v);off.setText("Current offset: "+formatOffset(v));}
+            public void onProgressChanged(SeekBar s,int p,boolean f){long v=(p-60)*500L;if(second)SettingsStore.offset2(MainActivity.this,v);else SettingsStore.offset(MainActivity.this,v);off.setText("Current offset: "+formatOffset(v));if(OverlayService.instance!=null)OverlayService.instance.refreshManualTimingSettings();}
             public void onStartTrackingTouch(SeekBar s){} public void onStopTrackingTouch(SeekBar s){}
         }); parent.addView(seek,lp(-1,-2,0,0,0,4));
     }
@@ -275,7 +282,7 @@ public class MainActivity extends Activity {
     private LinearLayout colorSlider(String label,SeekBar seek){LinearLayout r=new LinearLayout(this);r.setGravity(Gravity.CENTER_VERTICAL);TextView t=new TextView(this);t.setText(label);t.setTextColor(text());t.setTextSize(13);t.setLayoutParams(new LinearLayout.LayoutParams(dp(50),-2));r.addView(t);r.addView(seek,new LinearLayout.LayoutParams(0,-2,1));return r;}
 
     private Spinner spinner(String[] a){Spinner s=new Spinner(this);s.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,a));return s;}
-    private void setSpinnerFloat(Spinner s,float[] vals,float current){int idx=0;for(int i=0;i<vals.length;i++)if(Math.abs(vals[i]-current)<0.001){idx=i;break;}s.setSelection(idx);s.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){if(p==sizeSpinner)SettingsStore.size(MainActivity.this,vals[pos]);else SettingsStore.speed(MainActivity.this,vals[pos]);}});}
+    private void setSpinnerFloat(Spinner s,float[] vals,float current){int idx=0;for(int i=0;i<vals.length;i++)if(Math.abs(vals[i]-current)<0.001){idx=i;break;}s.setSelection(idx);s.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){if(p==sizeSpinner)SettingsStore.size(MainActivity.this,vals[pos]);else {SettingsStore.manualSpeed(MainActivity.this,vals[pos]);if(OverlayService.instance!=null)OverlayService.instance.refreshManualTimingSettings();}}});}
     private int indexOf(String[] a,String v){for(int i=0;i<a.length;i++)if(a[i].equals(v))return i;return 0;}
     private int indexOfInt(int[] a,int v){for(int i=0;i<a.length;i++)if(a[i]==v)return i;return 0;}
     private String formatOffset(long v){return (v>=0?"+":"")+(v/1000f)+" s";}
