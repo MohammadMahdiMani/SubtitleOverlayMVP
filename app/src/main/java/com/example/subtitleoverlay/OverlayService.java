@@ -7,6 +7,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.*;
 import android.view.*;
+import android.text.InputType;
 import android.widget.*;
 import java.io.InputStream;
 import java.util.*;
@@ -22,22 +23,20 @@ public class OverlayService extends Service {
     private final Handler h=new Handler(Looper.getMainLooper());
     private long offset, offset2;
     private float timingScale;
-    private long base=0, start;
     // Last trustworthy video-time anchor used only when both external sources go stale.
     private long fallbackPosition=0, fallbackUpdatedAt=0;
     private boolean fallbackHasAnchor=false, fallbackPlaying=true;
     private boolean run=true;
+    private boolean manualMode;
+    private int sourceMode;
+    private long manualPosition, manualStartedAt;
+    private float manualSpeed=1f;
     private long controlsHideAt;
     private static volatile long mediaPosition=-1, mediaDuration=-1, mediaUpdatedAt;
     private static volatile float mediaSpeed=1f;
     private static volatile boolean mediaPlaying=false;
     private static volatile long accessibilityPosition=-1, accessibilityUpdatedAt;
     private static volatile boolean accessibilityPlaying=true;
-    private static volatile long lastAccessObserved=-1;
-    private static volatile long mediaAuthorityUntil=0;
-    private static volatile long lastMediaAccepted=-1;
-    private static volatile long lastMediaUpdateObserved=-1;
-    private static volatile int mediaDivergenceCount=0;
 
     private static final int[] TEXT_COLORS={Color.WHITE,Color.YELLOW,Color.CYAN,Color.GREEN,Color.RED};
     private static final int[] BG_COLORS={Color.argb(180,0,0,0),Color.argb(180,255,255,255),Color.argb(180,0,60,120),Color.TRANSPARENT};
@@ -45,67 +44,20 @@ public class OverlayService extends Service {
 
     public static synchronized void setMediaPosition(long ms,float speed,long duration,String pkg,boolean playing){
         if(ms<0)return;
-        long now=SystemClock.elapsedRealtime();
         float validSpeed=(speed>0f&&speed<4f)?speed:1f;
-
-        // Always keep the latest MediaSession sample. It is the best source during
-        // real seeks because Accessibility can lag or expose another timestamp.
         mediaPosition=ms;
         mediaSpeed=validSpeed;
         if(duration>0)mediaDuration=duration;
         mediaPlaying=playing;
-        mediaUpdatedAt=now;
-
-        if(accessibilityPosition>=0 && now-accessibilityUpdatedAt<4000){
-            long predicted=accessibilityPosition;
-            if(accessibilityPlaying){
-                float sp=(mediaSpeed>0f&&mediaSpeed<4f)?mediaSpeed:1f;
-                predicted+=(long)((now-accessibilityUpdatedAt)*sp);
-            }
-            long diff=Math.abs(ms-predicted);
-
-            // A large MediaSession jump is treated as a possible seek. Requiring
-            // two nearby MediaSession observations avoids handing authority to a
-            // single noisy callback.
-            if(diff>2500){
-                if(lastMediaAccepted>=0 && Math.abs(ms-lastMediaAccepted)<1200){
-                    mediaDivergenceCount++;
-                }else{
-                    mediaDivergenceCount=1;
-                }
-                lastMediaAccepted=ms;
-                lastMediaUpdateObserved=now;
-                if(mediaDivergenceCount>=2){
-                    mediaAuthorityUntil=now+4500;
-                }
-            }else if(diff<1200){
-                mediaDivergenceCount=0;
-                if(mediaAuthorityUntil>now)mediaAuthorityUntil=now+700;
-            }
-        }else{
-            mediaDivergenceCount=0;
-            // If Accessibility has no fresh sample, MediaSession must be allowed
-            // to take over directly; do not require a prior ACCESS-vs-MEDIA conflict.
-            if (accessibilityPosition < 0 || now - accessibilityUpdatedAt >= 3000) {
-                mediaAuthorityUntil = now + 1800;
-            }
-        }
+        mediaUpdatedAt=SystemClock.elapsedRealtime();
     }
 
     public static synchronized void setAccessibilityPosition(long ms){
         if(ms<0)return;
-        long now=SystemClock.elapsedRealtime();
-        if(lastAccessObserved>=0 && Math.abs(ms-lastAccessObserved)>1500){
-            // Do not revoke MediaSession authority based on a single Accessibility
-            // jump: the Accessibility tree can expose duration/other timestamps.
-            // The source selector will return to ACCESS when its samples agree again.
-            mediaDivergenceCount=0;
-        }
-        lastAccessObserved=ms;
         accessibilityPosition=ms;
-        accessibilityUpdatedAt=now;
+        accessibilityUpdatedAt=SystemClock.elapsedRealtime();
     }
-    public static void setAccessibilityPlaying(boolean playing){accessibilityPlaying=playing;accessibilityUpdatedAt=SystemClock.elapsedRealtime();}
+    public static void setAccessibilityPlaying(boolean playing){accessibilityPlaying=playing;}
 
     @Override public void onCreate(){
         super.onCreate();instance=this;
@@ -113,17 +65,26 @@ public class OverlayService extends Service {
         getSystemService(NotificationManager.class).createNotificationChannel(c);
         startForeground(9,new Notification.Builder(this,"sub").setContentTitle("Subtitle Overlay running").setSmallIcon(android.R.drawable.ic_media_play).setOngoing(true).build());
         offset=SettingsStore.offset(this); offset2=SettingsStore.offset2(this); timingScale=SettingsStore.speed(this);
-        start=SystemClock.uptimeMillis();
+        manualMode=SettingsStore.manualMode(this);
+        sourceMode=SettingsStore.sourceMode(this);
+        manualPosition=SettingsStore.manualPosition(this);
+        manualSpeed=SettingsStore.manualSpeed(this);
+        manualStartedAt=SystemClock.elapsedRealtime();
         fallbackUpdatedAt=SystemClock.elapsedRealtime();
     }
 
     @Override public int onStartCommand(Intent i,int f,int id){
-        if(i!=null&&START.equals(i.getAction())){
-            try(InputStream in=getContentResolver().openInputStream(Uri.parse(i.getStringExtra(URI)))){
+        // START_STICKY may restart the service with a null Intent. Restore the selected
+        // subtitle instead of leaving a foreground service alive with a blank overlay.
+        if(i==null || START.equals(i.getAction())){
+            String primary = i==null ? SettingsStore.primaryUri(this) : i.getStringExtra(URI);
+            String secondary = i==null ? SettingsStore.secondaryUri(this) : i.getStringExtra(URI2);
+            if(primary==null || primary.isEmpty()) return START_STICKY;
+            try(InputStream in=getContentResolver().openInputStream(Uri.parse(primary))){
+                if(in==null) throw new IllegalStateException("Could not open primary subtitle");
                 cues=SrtParser.parse(in);
-                String u2=i.getStringExtra(URI2);
-                if(u2!=null&&!u2.isEmpty()) try(InputStream in2=getContentResolver().openInputStream(Uri.parse(u2))){ if(in2!=null)cues2=SrtParser.parse(in2); }
-                else cues2.clear();
+                cues2.clear();
+                if(secondary!=null&&!secondary.isEmpty()) try(InputStream in2=getContentResolver().openInputStream(Uri.parse(secondary))){ if(in2!=null)cues2=SrtParser.parse(in2); }
                 build();
             }catch(Exception e){Toast.makeText(this,"SRT error: "+e.getMessage(),Toast.LENGTH_LONG).show();}
         }
@@ -131,7 +92,8 @@ public class OverlayService extends Service {
     }
 
     private void build(){
-        remove();wm=(WindowManager)getSystemService(WINDOW_SERVICE);
+        h.removeCallbacks(tick);
+        remove();lastText="";wm=(WindowManager)getSystemService(WINDOW_SERVICE);
         sub=new TextView(this);
         sub.setTextColor(SettingsStore.textColor(this));
         sub.setTextSize(SettingsStore.size(this));
@@ -152,10 +114,11 @@ public class OverlayService extends Service {
         HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(false);
         LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setPadding(4,2,4,2);
         info=button("AUTO 00:00");row.addView(info);
+        add(row,"Sync",v->showSyncDialog());
         add(row,"A−",v->changeSize(-2));add(row,"A+",v->changeSize(2));add(row,"Color",v->cycleTextColor());add(row,"BG",v->cycleBg());add(row,"Font",v->cycleFont());add(row,"Pos",v->cyclePosition());
         add(row,"BG Mode",v->cycleBgMode());add(row,"Pad",v->cycleBgPadding());add(row,"Opacity",v->cycleBgOpacity());
         add(row,"−0.5s",v->changeOffset(-500));add(row,"+0.5s",v->changeOffset(500));add(row,"Offset 0",v->resetOffset());add(row,"Speed",v->cycleSpeed());
-        add(row,run?"Pause":"Play",v->{run=!run;if(run)start=SystemClock.uptimeMillis();((Button)v).setText(run?"Pause":"Play");touchControls();});
+        add(row,run?"Pause":"Play",v->{toggleRun((Button)v);});
         add(row,"✕",v->stopSelf());scroll.addView(row);ctl=scroll;
         WindowManager.LayoutParams q=new WindowManager.LayoutParams(-2,-2,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT);
         q.gravity=Gravity.TOP|Gravity.CENTER_HORIZONTAL;q.y=25;wm.addView(ctl,q);
@@ -206,17 +169,25 @@ public class OverlayService extends Service {
     private void refreshLayout(){if(sub==null||wm==null)return;try{WindowManager.LayoutParams lp=(WindowManager.LayoutParams)sub.getLayoutParams();lp.width=SettingsStore.bgMode(this)==0?-1:-2;lp.height=-2;lp.y=positionY();wm.updateViewLayout(sub,lp);}catch(Exception ignored){}}
 
     private String currentSource(long now) {
+        if(manualMode) return "MANUAL";
         boolean accessFresh = accessibilityPosition >= 0 && now - accessibilityUpdatedAt < 3000;
         boolean mediaFresh = mediaPosition >= 0 && now - mediaUpdatedAt < 1800;
-        if (mediaFresh && (mediaAuthorityUntil > now || !accessFresh)) return "MEDIA";
-        if (accessFresh) return "ACCESS";
-        if (mediaFresh) return "MEDIA";
-        return "MAN";
+        if(sourceMode==1) return accessFresh ? "ACCESS" : "HOLD";
+        if(sourceMode==2) return mediaFresh ? "MEDIA" : "HOLD";
+        // Automatic: MediaSession is preferred when fresh; Accessibility is fallback.
+        if(mediaFresh) return "MEDIA";
+        if(accessFresh) return "ACCESS";
+        return "HOLD";
     }
 
     private long currentPosition(){
         long now=SystemClock.elapsedRealtime();
         String source=currentSource(now);
+        if("MANUAL".equals(source)){
+            long pos=manualPosition;
+            if(run) pos+=(long)((now-manualStartedAt)*manualSpeed);
+            return Math.max(0,pos);
+        }
         if("ACCESS".equals(source)){
             long pos=accessibilityPosition;
             boolean playing=accessibilityPlaying;
@@ -225,22 +196,64 @@ public class OverlayService extends Service {
                 pos+=(long)((now-accessibilityUpdatedAt)*sp);
             }
             rememberFallback(pos, playing, now);
-            return Math.max(0,(long)(pos*timingScale)+offset);
+            return Math.max(0,(long)(pos*timingScale));
         }
         if("MEDIA".equals(source)){
             long pos=mediaPosition;
             if(mediaPlaying)pos+=(long)((now-mediaUpdatedAt)*mediaSpeed);
             rememberFallback(pos, mediaPlaying, now);
-            return Math.max(0,(long)(pos*timingScale)+offset);
+            return Math.max(0,(long)(pos*timingScale));
         }
-        // No live source: retain the last valid video-time anchor. Never use
-        // device uptime as if it were the video's position.
+        // No live source: retain the last valid video-time anchor. Never use device uptime.
         long pos=fallbackPosition;
         if(fallbackHasAnchor && fallbackPlaying){
             float sp=(mediaSpeed>0f&&mediaSpeed<4f)?mediaSpeed:1f;
             pos+=(long)((now-fallbackUpdatedAt)*sp);
         }
-        return Math.max(0,(long)(pos*timingScale)+offset);
+        return Math.max(0,(long)(pos*timingScale));
+    }
+
+    private void showSyncDialog(){
+        LinearLayout box=new LinearLayout(this); box.setOrientation(LinearLayout.VERTICAL); box.setPadding(dp(20),dp(8),dp(20),dp(4));
+        TextView sourceLabel=new TextView(this); sourceLabel.setText("Automatic source mode"); box.addView(sourceLabel);
+        Spinner source=new Spinner(this); String[] sourceLabels={"Auto (MediaSession preferred, Accessibility fallback)","Accessibility only","MediaSession / notification only"}; source.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,sourceLabels)); source.setSelection(sourceMode); box.addView(source);
+        CheckBox manual=new CheckBox(this); manual.setText("Enable manual time override (overrides automatic source)"); manual.setChecked(manualMode); box.addView(manual);
+        TextView timeLabel=new TextView(this); timeLabel.setText("Start time (MM:SS or HH:MM:SS)"); box.addView(timeLabel);
+        EditText time=new EditText(this); time.setSingleLine(true); time.setInputType(InputType.TYPE_CLASS_TEXT); time.setHint("e.g. 12:34"); time.setText(formatLongTime(manualMode?manualPosition:currentPosition())); box.addView(time);
+        TextView speedLabel=new TextView(this); speedLabel.setText("Manual playback speed"); box.addView(speedLabel);
+        Spinner speed=new Spinner(this); String[] speedLabels={"0.5x","0.75x","0.9x","1.0x","1.1x","1.25x","1.5x","1.75x","2.0x"}; float[] speedValues={0.5f,0.75f,0.9f,1f,1.1f,1.25f,1.5f,1.75f,2f}; speed.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,speedLabels)); int selected=3; for(int j=0;j<speedValues.length;j++)if(Math.abs(speedValues[j]-manualSpeed)<0.001f){selected=j;break;} speed.setSelection(selected); box.addView(speed);
+        TextView offsetLabel=new TextView(this); offsetLabel.setText("Subtitle offset in seconds (+ later / − earlier)"); box.addView(offsetLabel);
+        EditText off=new EditText(this); off.setSingleLine(true); off.setInputType(InputType.TYPE_CLASS_NUMBER|InputType.TYPE_NUMBER_FLAG_SIGNED|InputType.TYPE_NUMBER_FLAG_DECIMAL); off.setText(String.format(Locale.US,"%.3f",offset/1000f)); box.addView(off);
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Subtitle synchronization").setView(box)
+            .setPositiveButton("Start / Apply",(d,w)->{
+                boolean useManual=manual.isChecked();
+                try{
+                    long entered=parseLongTime(time.getText().toString());
+                    float newSpeed=speedValues[Math.max(0,Math.min(speedValues.length-1,speed.getSelectedItemPosition()))];
+                    double offSeconds=Double.parseDouble(off.getText().toString().trim().replace(',','.'));
+                    offset=(long)(offSeconds*1000d); SettingsStore.offset(this,offset);
+                    long handoffPosition=currentPosition();
+                    sourceMode=Math.max(0,Math.min(2,source.getSelectedItemPosition())); SettingsStore.sourceMode(this,sourceMode);
+                    manualMode=useManual; SettingsStore.manualMode(this,useManual);
+                    if(useManual){manualPosition=entered;manualSpeed=newSpeed;manualStartedAt=SystemClock.elapsedRealtime();run=true;SettingsStore.manualPosition(this,entered);SettingsStore.manualSpeed(this,newSpeed);}
+                    else { fallbackPosition=Math.max(0,handoffPosition);fallbackUpdatedAt=SystemClock.elapsedRealtime();fallbackHasAnchor=true;fallbackPlaying=true; }
+                    touchControls();
+                }catch(Exception ex){Toast.makeText(this,"Invalid time or offset. Use MM:SS / HH:MM:SS and a numeric offset.",Toast.LENGTH_LONG).show();}
+            }).setNegativeButton("Cancel",null).create();
+        if(dialog.getWindow()!=null)dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+        dialog.show();
+    }
+
+    private long parseLongTime(String raw){
+        String[] parts=raw.trim().split(":"); if(parts.length<2||parts.length>3)throw new IllegalArgumentException("time format");
+        long total=0; for(int i=0;i<parts.length;i++){String part=parts[i].trim();if(part.isEmpty())throw new IllegalArgumentException("time format");long n=Long.parseLong(part);if(n<0||(i>0&&n>=60))throw new IllegalArgumentException("time range");total=total*60+n;} return total*1000L;
+    }
+    private String formatLongTime(long ms){long sec=Math.max(0,ms)/1000;long h=sec/3600;long m=(sec%3600)/60;long s=sec%60;return h>0?String.format(Locale.US,"%d:%02d:%02d",h,m,s):String.format(Locale.US,"%02d:%02d",m,s);}
+    private void toggleRun(Button button){
+        long now=SystemClock.elapsedRealtime();
+        if(manualMode){if(run)manualPosition+=(long)((now-manualStartedAt)*manualSpeed);manualStartedAt=now;}
+        run=!run;
+        button.setText(run?"Pause":"Play");touchControls();
     }
 
     private void rememberFallback(long position, boolean playing, long now){
@@ -260,20 +273,26 @@ public class OverlayService extends Service {
     private String lastText="";
     private int lastBgMode=-1,lastBgPadding=-1,lastBgOpacity=-1,lastPosition=-1;
     private final Runnable tick=new Runnable(){@Override public void run(){
-        if(sub==null)return;
-        updateControlsVisibility();
-        long pos=currentPosition();
-        String text=combineText(pos);
-        boolean visible=!text.isEmpty();
-        if(!text.equals(lastText)){sub.setText(text);lastText=text;}
-        if(sub.getVisibility()!=(visible?View.VISIBLE:View.INVISIBLE))sub.setVisibility(visible?View.VISIBLE:View.INVISIBLE);
-        int bm=SettingsStore.bgMode(OverlayService.this),bp=SettingsStore.bgPadding(OverlayService.this),bo=SettingsStore.bgOpacity(OverlayService.this),pp=SettingsStore.position(OverlayService.this);
-        if(bm!=lastBgMode||bp!=lastBgPadding||bo!=lastBgOpacity){
-            int pad=dp(bp);sub.setPadding(pad,pad,pad,pad);applyBackground(false);refreshLayout();lastBgMode=bm;lastBgPadding=bp;lastBgOpacity=bo;
+        try {
+            if(sub==null)return;
+            updateControlsVisibility();
+            long pos=currentPosition();
+            String text=combineText(pos);
+            boolean visible=!text.isEmpty();
+            if(!text.equals(lastText)){sub.setText(text);lastText=text;}
+            if(sub.getVisibility()!=(visible?View.VISIBLE:View.INVISIBLE))sub.setVisibility(visible?View.VISIBLE:View.INVISIBLE);
+            int bm=SettingsStore.bgMode(OverlayService.this),bp=SettingsStore.bgPadding(OverlayService.this),bo=SettingsStore.bgOpacity(OverlayService.this),pp=SettingsStore.position(OverlayService.this);
+            if(bm!=lastBgMode||bp!=lastBgPadding||bo!=lastBgOpacity){
+                int pad=dp(bp);sub.setPadding(pad,pad,pad,pad);applyBackground(false);refreshLayout();lastBgMode=bm;lastBgPadding=bp;lastBgOpacity=bo;
+            }
+            if(pp!=lastPosition){refreshLayout();lastPosition=pp;}
+            if(info!=null){long now=SystemClock.elapsedRealtime();String mode=currentSource(now);info.setText(mode+" "+fmt(pos)+(mediaDuration>0?" / "+fmt(mediaDuration):""));}
+        } catch (Exception e) {
+            // Keep the UI loop alive if Android temporarily invalidates an overlay view.
+            android.util.Log.w("SubtitleOverlay", "Overlay tick recovered", e);
+        } finally {
+            if(sub!=null)h.postDelayed(this,80);
         }
-        if(pp!=lastPosition){refreshLayout();lastPosition=pp;}
-        if(info!=null){long now=SystemClock.elapsedRealtime();String mode=currentSource(now);info.setText(mode+" "+fmt(pos)+(mediaDuration>0?" / "+fmt(mediaDuration):""));}
-        h.postDelayed(this,80);
     }};
     private String fmt(long ms){long sec=Math.max(0,ms)/1000;long m=sec/60;long s=sec%60;return String.format(Locale.US,"%02d:%02d",m,s);}
     private void remove(){if(wm==null)return;try{if(sub!=null)wm.removeView(sub);}catch(Exception ignored){}try{if(ctl!=null)wm.removeView(ctl);}catch(Exception ignored){}sub=null;ctl=null;}

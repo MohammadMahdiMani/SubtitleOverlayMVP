@@ -62,7 +62,7 @@ public class MainActivity extends Activity {
         title.setText("Subtitle Overlay"); title.setTextSize(26); title.setTextColor(text()); title.setTypeface(null,1);
         root.addView(title,lp(-1,-2,0,0,0,4));
         TextView version=new TextView(this);
-        version.setText("v1.2.0 • stable sync + improved UI"); version.setTextSize(13); version.setTextColor(muted());
+        version.setText("v1.3.0 • automatic sync + manual override"); version.setTextSize(13); version.setTextColor(muted());
         root.addView(version,lp(-1,-2,0,0,0,14));
 
         buildPrimarySection();
@@ -158,7 +158,7 @@ public class MainActivity extends Activity {
         setSpinnerFloat(speedSpinner,speeds,SettingsStore.speed(this)); card.addView(row("Subtitle timing speed",speedSpinner));
         card.addView(label("Primary subtitle offset")); addOffsetControls(card,SettingsStore.offset(this),false);
         card.addView(label("Secondary subtitle offset")); addOffsetControls(card,SettingsStore.offset2(this),true);
-        TextView hint=smallText("Sync uses Accessibility first and MediaSession as an automatic fallback. Offsets affect subtitle timing only.");
+        TextView hint=smallText("Automatic mode uses MediaSession while it is actively playing, then Accessibility as fallback. Use the Sync button in overlay controls to manually set a start time, playback speed, and subtitle offset.");
         card.addView(hint,lp(-1,-2,0,8,0,0));
         root.addView(card,cardParams());
     }

@@ -105,8 +105,8 @@ public class MediaSessionSyncService extends NotificationListenerService {
             long lastUpdate = state.getLastPositionUpdateTime();
             long delta = now - lastUpdate;
             // PlaybackState timestamps use elapsed realtime. Avoid extrapolating
-            // from an implausibly old/future anchor.
-            if (lastUpdate > 0 && delta >= 0 && delta < 30000) {
+            // from a future or implausibly old anchor (six hours is the safety cap).
+            if (lastUpdate > 0 && delta >= 0 && delta < 21600000) {
                 position += (long) (delta * speed);
             }
         }

@@ -27,6 +27,18 @@ public final class SettingsStore {
     public static void offset2(Context c,long v){ c.getSharedPreferences(PREF,0).edit().putLong("offset2",v).apply(); }
     public static float speed(Context c){ return c.getSharedPreferences(PREF,0).getFloat("speed",1f); }
     public static void speed(Context c,float v){ c.getSharedPreferences(PREF,0).edit().putFloat("speed", clamp(v,.25f,3f)).apply(); }
+
+    // Manual sync mode: 0 = automatic sources, 1 = user-controlled clock.
+    // 0 = automatic (MediaSession preferred, Accessibility fallback), 1 = Accessibility only, 2 = MediaSession only.
+    public static int sourceMode(Context c){ return c.getSharedPreferences(PREF,0).getInt("source_mode",0); }
+    public static void sourceMode(Context c,int v){ c.getSharedPreferences(PREF,0).edit().putInt("source_mode",Math.max(0,Math.min(2,v))).apply(); }
+    public static boolean manualMode(Context c){ return c.getSharedPreferences(PREF,0).getBoolean("manual_mode",false); }
+    public static void manualMode(Context c,boolean v){ c.getSharedPreferences(PREF,0).edit().putBoolean("manual_mode",v).apply(); }
+    public static long manualPosition(Context c){ return c.getSharedPreferences(PREF,0).getLong("manual_position",0L); }
+    public static void manualPosition(Context c,long v){ c.getSharedPreferences(PREF,0).edit().putLong("manual_position",Math.max(0,v)).apply(); }
+    public static float manualSpeed(Context c){ return c.getSharedPreferences(PREF,0).getFloat("manual_speed",1f); }
+    public static void manualSpeed(Context c,float v){ c.getSharedPreferences(PREF,0).edit().putFloat("manual_speed",clamp(v,0.25f,3f)).apply(); }
+
     public static String primaryUri(Context c){ return c.getSharedPreferences(PREF,0).getString("primary_uri", ""); }
     public static void primaryUri(Context c,String v){ c.getSharedPreferences(PREF,0).edit().putString("primary_uri",v).apply(); }
     public static String secondaryUri(Context c){ return c.getSharedPreferences(PREF,0).getString("secondary_uri", ""); }
