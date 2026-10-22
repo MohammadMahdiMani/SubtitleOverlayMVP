@@ -53,7 +53,7 @@ public class MainActivity extends Activity {
         ScrollView scroll=new ScrollView(this);
         root=new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(18),dp(18),dp(18),dp(28));
+        root.setPadding(dp(18),dp(18),dp(18),dp(104));
         root.setBackgroundColor(rootColor());
         String saved1=SettingsStore.primaryUri(this), saved2=SettingsStore.secondaryUri(this);
         if(saved1!=null&&!saved1.isEmpty()) uri=Uri.parse(saved1);
@@ -63,7 +63,7 @@ public class MainActivity extends Activity {
         title.setText("Subtitle Overlay"); title.setTextSize(26); title.setTextColor(text()); title.setTypeface(null,1);
         root.addView(title,lp(-1,-2,0,0,0,4));
         TextView version=new TextView(this);
-        version.setText("v1.3.1 • manual timing controls"); version.setTextSize(13); version.setTextColor(muted());
+        version.setText("v1.3.2 • overlay UI restoration"); version.setTextSize(13); version.setTextColor(muted());
         root.addView(version,lp(-1,-2,0,0,0,14));
 
         buildPrimarySection();
@@ -74,7 +74,30 @@ public class MainActivity extends Activity {
         buildSystemSection();
 
         scroll.addView(root);
-        setContentView(scroll);
+        scroll.setFillViewport(true);
+        FrameLayout frame=new FrameLayout(this);
+        frame.addView(scroll,new FrameLayout.LayoutParams(-1,-1));
+
+        LinearLayout sticky=new LinearLayout(this);
+        sticky.setOrientation(LinearLayout.HORIZONTAL);
+        sticky.setGravity(Gravity.CENTER_VERTICAL);
+        sticky.setPadding(dp(12),dp(8),dp(12),dp(8));
+        sticky.setBackgroundColor(surface());
+        Button start=primaryButton("START OVERLAY");
+        start.setTextSize(15);
+        start.setOnClickListener(v->start());
+        Button stop=dangerButton("STOP OVERLAY");
+        stop.setTextSize(15);
+        stop.setOnClickListener(v->stopService(new Intent(this,OverlayService.class)));
+        LinearLayout.LayoutParams stickyButton=new LinearLayout.LayoutParams(0,dp(48),1f);
+        stickyButton.setMargins(dp(4),0,dp(4),0);
+        sticky.addView(start,stickyButton);
+        LinearLayout.LayoutParams stopParams=new LinearLayout.LayoutParams(0,dp(48),1f);
+        stopParams.setMargins(dp(4),0,dp(4),0);
+        sticky.addView(stop,stopParams);
+        FrameLayout.LayoutParams stickyParams=new FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM);
+        frame.addView(sticky,stickyParams);
+        setContentView(frame);
     }
 
     private void buildPrimarySection(){
@@ -171,13 +194,14 @@ public class MainActivity extends Activity {
         overlayCheck=permissionRow(card,"Overlay permission",v->startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,Uri.parse("package:"+getPackageName()))));
         notificationCheck=permissionRow(card,"Notifications & Media Session",v->openNotificationSettings());
         accessibilityCheck=permissionRow(card,"Accessibility sync",v->startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        Spinner hideSpinner=spinner(new String[]{"3 seconds","5 seconds","10 seconds","Always visible"});
+        int hide=SettingsStore.controlsAutoHide(this); int hideIdx=hide==5?1:(hide==10?2:(hide==0?3:0)); hideSpinner.setSelection(hideIdx);
+        hideSpinner.setOnItemSelectedListener(new SimpleListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){int[] vals={3,5,10,0};SettingsStore.controlsAutoHide(MainActivity.this,vals[pos]);if(OverlayService.instance!=null)OverlayService.instance.refreshControlsVisibilityFromSettings();}});
+        card.addView(row("Overlay controls auto-hide",hideSpinner));
         TextView mediaHint=smallText("Media Session sync uses Notification Access. Enable it below if you want automatic MediaSession fallback.");
         card.addView(mediaHint,lp(-1,-2,0,2,0,4));
         Button media=secondaryButton("Enable Media Session / Notification Access"); media.setOnClickListener(v->startActivity(new Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"))); card.addView(media,fullButtonParams());
-        Space sp=new Space(this); card.addView(sp,lp(1,dp(8),0,8,0,8));
-        Button start=primaryButton("START OVERLAY"); start.setTextSize(16); start.setOnClickListener(v->start()); card.addView(start,fullButtonParams());
-        Button stop=dangerButton("STOP OVERLAY"); stop.setOnClickListener(v->stopService(new Intent(this,OverlayService.class))); card.addView(stop,fullButtonParams());
-        TextView info=smallText("The overlay draws your SRT subtitles on top of the video. It does not read or modify the video stream.");
+        TextView info=smallText("The overlay draws your SRT subtitles on top of the video. It does not read or modify the video stream. Start and Stop stay available at the bottom of this screen.");
         card.addView(info,lp(-1,-2,0,10,0,0));
         root.addView(card,cardParams());
     }

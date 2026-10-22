@@ -31,7 +31,7 @@ public class OverlayService extends Service {
     private long manualPosition, manualStartedAt;
     private float manualSpeed=1f;
     private long controlsHideAt;
-    private Button offsetMinusButton, offsetPlusButton, offsetResetButton, speedButton;
+    private Button hideButton;
     private static volatile long mediaPosition=-1, mediaDuration=-1, mediaUpdatedAt;
     private static volatile float mediaSpeed=1f;
     private static volatile boolean mediaPlaying=false;
@@ -112,14 +112,18 @@ public class OverlayService extends Service {
         setSubtitleTouchEnabled(false);
 
         HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(false);
-        LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setPadding(4,2,4,2);
-        info=button("AUTO 00:00");row.addView(info);
-        add(row,"Sync",v->showSyncDialog());
-        add(row,"A−",v->changeSize(-2));add(row,"A+",v->changeSize(2));add(row,"Color",v->cycleTextColor());add(row,"BG",v->cycleBg());add(row,"Font",v->cycleFont());add(row,"Pos",v->cyclePosition());
-        add(row,"BG Mode",v->cycleBgMode());add(row,"Pad",v->cycleBgPadding());add(row,"Opacity",v->cycleBgOpacity());
-        offsetMinusButton=add(row,"−0.5s",v->changeOffset(-500)); offsetPlusButton=add(row,"+0.5s",v->changeOffset(500)); offsetResetButton=add(row,"Offset 0",v->resetOffset()); speedButton=add(row,"Speed",v->cycleSpeed()); updateManualTimingButtons();
-        add(row,run?"Pause":"Play",v->{toggleRun((Button)v);});
-        add(row,"✕",v->stopSelf());scroll.addView(row);ctl=scroll;
+        LinearLayout rows=new LinearLayout(this);rows.setOrientation(LinearLayout.VERTICAL);rows.setPadding(dp(4),dp(2),dp(4),dp(2));
+        LinearLayout design=new LinearLayout(this);design.setOrientation(LinearLayout.HORIZONTAL);
+        info=button("AUTO 00:00"); addToRow(design,info);
+        add(design,"A−",v->changeSize(-2));add(design,"A+",v->changeSize(2));add(design,"Color",v->cycleTextColor());add(design,"BG",v->cycleBg());add(design,"Font",v->cycleFont());add(design,"Pos",v->cyclePosition());
+        add(design,"BG Mode",v->cycleBgMode());add(design,"Pad",v->cycleBgPadding());add(design,"Opacity",v->cycleBgOpacity());
+        LinearLayout timing=new LinearLayout(this);timing.setOrientation(LinearLayout.HORIZONTAL);
+        add(timing,"Sync",v->showSyncDialog());
+        add(timing,run?"Pause":"Play",v->{toggleRun((Button)v);});
+        hideButton=add(timing,hideLabel(),v->cycleAutoHide());
+        add(timing,"✕",v->stopSelf());
+        rows.addView(design);LinearLayout.LayoutParams timingParams=new LinearLayout.LayoutParams(-2,dp(40));timingParams.setMargins(0,dp(1),0,dp(1));rows.addView(timing,timingParams);
+        scroll.addView(rows);ctl=scroll;
         WindowManager.LayoutParams q=new WindowManager.LayoutParams(-2,-2,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,PixelFormat.TRANSLUCENT);
         q.gravity=Gravity.TOP|Gravity.CENTER_HORIZONTAL;q.y=25;wm.addView(ctl,q);
         controlsHideAt=SystemClock.elapsedRealtime()+3000;touchControls();h.post(tick);
@@ -132,15 +136,40 @@ public class OverlayService extends Service {
     }
     private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
     private Button button(String s){
-        Button b=new Button(this);b.setText(s);b.setTextSize(10);b.setMinHeight(1);b.setMinWidth(1);
-        GradientDrawable n=new GradientDrawable();n.setColor(Color.argb(235,40,40,40));n.setCornerRadius(dp(6));
-        GradientDrawable p=new GradientDrawable();p.setColor(Color.argb(255,75,75,75));p.setCornerRadius(dp(6));
-        android.graphics.drawable.StateListDrawable st=new android.graphics.drawable.StateListDrawable();st.addState(new int[]{android.R.attr.state_pressed},p);st.addState(new int[]{android.R.attr.state_hovered},p);st.addState(new int[]{},n);b.setBackground(st);b.setTextColor(Color.WHITE);
+        Button b=new Button(this);b.setText(s);b.setTextSize(10);b.setMinHeight(1);b.setMinWidth(1);b.setAllCaps(false);b.setPadding(dp(7),0,dp(7),0);
+        int base=buttonColor(s);
+        GradientDrawable normal=shape(base), pressed=shape(blend(base,Color.WHITE,0.18f)), selected=shape(blend(base,Color.WHITE,0.28f)), focused=shape(blend(base,Color.WHITE,0.10f)), disabled=shape(Color.rgb(80,80,80));
+        android.graphics.drawable.StateListDrawable st=new android.graphics.drawable.StateListDrawable();
+        st.addState(new int[]{-android.R.attr.state_enabled},disabled);
+        st.addState(new int[]{android.R.attr.state_pressed},pressed);
+        st.addState(new int[]{android.R.attr.state_selected},selected);
+        st.addState(new int[]{android.R.attr.state_hovered},focused);
+        st.addState(new int[]{android.R.attr.state_focused},focused);
+        st.addState(new int[]{},normal);
+        b.setBackground(st);b.setTextColor(Color.WHITE);
         b.setOnTouchListener((v,e)->{if(e.getAction()==MotionEvent.ACTION_DOWN)touchControls();return false;});return b;
     }
-    private Button add(LinearLayout row,String text,View.OnClickListener l){Button b=button(text);b.setOnClickListener(l);row.addView(b);return b;}
-    private void touchControls(){controlsHideAt=SystemClock.elapsedRealtime()+3000;if(ctl!=null)ctl.setVisibility(View.VISIBLE);setSubtitleTouchEnabled(false);}
-    private void updateControlsVisibility(){if(ctl!=null&&SystemClock.elapsedRealtime()>=controlsHideAt){ctl.setVisibility(View.GONE);setSubtitleTouchEnabled(true);}}
+    private GradientDrawable shape(int color){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(7));d.setStroke(dp(1),blend(color,Color.WHITE,0.12f));return d;}
+    private int blend(int a,int b,float ratio){float r=Math.max(0f,Math.min(1f,ratio));return Color.rgb((int)(Color.red(a)*(1-r)+Color.red(b)*r),(int)(Color.green(a)*(1-r)+Color.green(b)*r),(int)(Color.blue(a)*(1-r)+Color.blue(b)*r));}
+    private int buttonColor(String s){
+        if("✕".equals(s))return Color.rgb(183,35,48);
+        if("Sync".equals(s))return Color.rgb(63,81,181);
+        if("Play".equals(s)||"Pause".equals(s))return Color.rgb(0,121,87);
+        if(s.startsWith("Hide")||s.startsWith("Always"))return Color.rgb(106,66,160);
+        if("Color".equals(s)||"BG".equals(s)||"Font".equals(s)||"Pos".equals(s))return Color.rgb(0,105,120);
+        return Color.rgb(54,65,82);
+    }
+    private void addToRow(LinearLayout row,Button b){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(34));p.setMargins(dp(3),dp(3),dp(3),dp(3));row.addView(b,p);}
+    private Button add(LinearLayout row,String text,View.OnClickListener l){
+        Button b=button(text);b.setTag(text);
+        b.setOnClickListener(v->{for(int i=0;i<row.getChildCount();i++)row.getChildAt(i).setSelected(false);b.setSelected(true);l.onClick(v);if("Pause".equals(text)||"Play".equals(text))b.setSelected(run);});
+        addToRow(row,b);return b;
+    }
+    private String hideLabel(){int v=SettingsStore.controlsAutoHide(this);return v==0?"Always":("Hide "+v+"s");}
+    public void refreshControlsVisibilityFromSettings(){if(ctl==null)return;if(hideButton!=null)hideButton.setText(hideLabel());touchControls();}
+    private void cycleAutoHide(){int cur=SettingsStore.controlsAutoHide(this);int[] vals={3,5,10,0};int idx=0;for(int i=0;i<vals.length;i++)if(vals[i]==cur){idx=i;break;}SettingsStore.controlsAutoHide(this,vals[(idx+1)%vals.length]);if(hideButton!=null)hideButton.setText(hideLabel());touchControls();}
+    private void touchControls(){int sec=SettingsStore.controlsAutoHide(this);if(ctl!=null)ctl.setVisibility(View.VISIBLE);if(sec==0){controlsHideAt=Long.MAX_VALUE;setSubtitleTouchEnabled(false);}else{controlsHideAt=SystemClock.elapsedRealtime()+sec*1000L;setSubtitleTouchEnabled(false);}}
+    private void updateControlsVisibility(){int sec=SettingsStore.controlsAutoHide(this);if(ctl!=null){if(sec==0){ctl.setVisibility(View.VISIBLE);return;}if(SystemClock.elapsedRealtime()>=controlsHideAt){ctl.setVisibility(View.GONE);setSubtitleTouchEnabled(true);}}}
     private void setSubtitleTouchEnabled(boolean enabled){if(sub==null||wm==null)return;try{WindowManager.LayoutParams lp=(WindowManager.LayoutParams)sub.getLayoutParams();int flags=WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE|WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS;if(!enabled)flags|=WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE;lp.flags=flags;wm.updateViewLayout(sub,lp);}catch(Exception ignored){}}
 
     public void refreshAppearance(){
@@ -159,13 +188,7 @@ public class OverlayService extends Service {
     private void cycleBg(){int c=SettingsStore.bgColor(this);int next=BG_COLORS[0];for(int i=0;i<BG_COLORS.length;i++)if(BG_COLORS[i]==c){next=BG_COLORS[(i+1)%BG_COLORS.length];break;}SettingsStore.bgColor(this,next);SettingsStore.bgEnabled(this,next!=Color.TRANSPARENT);applyBackground(true);touchControls();}
     private void cycleFont(){String f=SettingsStore.font(this);int idx=0;for(int i=0;i<FONTS.length;i++)if(FONTS[i].equals(f)){idx=i;break;}String next=FONTS[(idx+1)%FONTS.length];if("custom".equals(next)&&!SettingsStore.hasCustomFont(this))next=FONTS[0];SettingsStore.font(this,next);if(sub!=null){sub.setTypeface(SettingsStore.typeface(this,next));refreshLayout();}touchControls();}
     private void cyclePosition(){int p=(SettingsStore.position(this)+1)%5;SettingsStore.position(this,p);if(sub!=null&&wm!=null)try{WindowManager.LayoutParams lp=(WindowManager.LayoutParams)sub.getLayoutParams();lp.y=positionY();wm.updateViewLayout(sub,lp);}catch(Exception ignored){}touchControls();}
-    private void updateManualTimingButtons(){
-        boolean enabled=manualMode;
-        if(offsetMinusButton!=null)offsetMinusButton.setEnabled(enabled);
-        if(offsetPlusButton!=null)offsetPlusButton.setEnabled(enabled);
-        if(offsetResetButton!=null)offsetResetButton.setEnabled(enabled);
-        if(speedButton!=null)speedButton.setEnabled(enabled);
-    }
+    private void updateManualTimingButtons(){ /* Speed and offset are intentionally available only inside the Sync dialog. */ }
 
     public void refreshManualTimingSettings(){
         float savedSpeed=SettingsStore.manualSpeed(this);
@@ -250,7 +273,7 @@ public class OverlayService extends Service {
         Spinner source=new Spinner(this); String[] sourceLabels={"Auto (MediaSession preferred, Accessibility fallback)","Accessibility only","MediaSession / notification only"}; source.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,sourceLabels)); source.setSelection(sourceMode); box.addView(source);
         CheckBox manual=new CheckBox(this); manual.setText("Enable manual time override (overrides automatic source)"); manual.setChecked(manualMode); box.addView(manual);
         TextView timeLabel=new TextView(this); timeLabel.setText("Start time (MM:SS or HH:MM:SS)"); box.addView(timeLabel);
-        EditText time=new EditText(this); time.setSingleLine(true); time.setInputType(InputType.TYPE_CLASS_TEXT); time.setHint("e.g. 12:34"); time.setText(formatLongTime(manualMode?manualPosition:currentPosition())); box.addView(time);
+        EditText time=new EditText(this); time.setSingleLine(true); time.setInputType(InputType.TYPE_CLASS_NUMBER); time.setHint("Digits: 1234 = 12:34; 11234 = 1:12:34"); time.setText(formatNumericTime(manualMode?manualPosition:currentPosition())); box.addView(time);
         TextView speedLabel=new TextView(this); speedLabel.setText("Manual playback speed"); box.addView(speedLabel);
         Spinner speed=new Spinner(this); String[] speedLabels={"0.5x","0.75x","0.9x","1.0x","1.1x","1.25x","1.5x","1.75x","2.0x"}; float[] speedValues={0.5f,0.75f,0.9f,1f,1.1f,1.25f,1.5f,1.75f,2f}; speed.setAdapter(new ArrayAdapter<String>(this,android.R.layout.simple_spinner_dropdown_item,speedLabels)); int selected=3; for(int j=0;j<speedValues.length;j++)if(Math.abs(speedValues[j]-manualSpeed)<0.001f){selected=j;break;} speed.setSelection(selected); box.addView(speed);
         TextView offsetLabel=new TextView(this); offsetLabel.setText("Subtitle offset in seconds (+ later / − earlier)"); box.addView(offsetLabel);
@@ -277,17 +300,24 @@ public class OverlayService extends Service {
                     manualMode=useManual; SettingsStore.manualMode(this,useManual);
                     updateManualTimingButtons();
                     touchControls();
-                }catch(Exception ex){Toast.makeText(this,"Invalid time or offset. Use MM:SS / HH:MM:SS and a numeric offset.",Toast.LENGTH_LONG).show();}
+                }catch(Exception ex){Toast.makeText(this,"Invalid time or offset. Enter digits (e.g. 1234) or MM:SS / HH:MM:SS, plus a numeric offset.",Toast.LENGTH_LONG).show();}
             }).setNegativeButton("Cancel",null).create();
         if(dialog.getWindow()!=null)dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
         dialog.show();
     }
 
     private long parseLongTime(String raw){
-        String[] parts=raw.trim().split(":"); if(parts.length<2||parts.length>3)throw new IllegalArgumentException("time format");
+        String value=raw.trim();
+        if(value.matches("\\d{3,6}")){
+            if(value.length()<=4){long n=Long.parseLong(value);long seconds=n%100;long minutes=n/100;if(seconds>=60)throw new IllegalArgumentException("time range");return (minutes*60+seconds)*1000L;}
+            long seconds=Long.parseLong(value.substring(value.length()-2));long minutes=Long.parseLong(value.substring(value.length()-4,value.length()-2));long hours=Long.parseLong(value.substring(0,value.length()-4));
+            if(seconds>=60||minutes>=60)throw new IllegalArgumentException("time range");return (hours*3600+minutes*60+seconds)*1000L;
+        }
+        String[] parts=value.split(":"); if(parts.length<2||parts.length>3)throw new IllegalArgumentException("time format");
         long total=0; for(int i=0;i<parts.length;i++){String part=parts[i].trim();if(part.isEmpty())throw new IllegalArgumentException("time format");long n=Long.parseLong(part);if(n<0||(i>0&&n>=60))throw new IllegalArgumentException("time range");total=total*60+n;} return total*1000L;
     }
     private String formatLongTime(long ms){long sec=Math.max(0,ms)/1000;long h=sec/3600;long m=(sec%3600)/60;long s=sec%60;return h>0?String.format(Locale.US,"%d:%02d:%02d",h,m,s):String.format(Locale.US,"%02d:%02d",m,s);}
+    private String formatNumericTime(long ms){long sec=Math.max(0,ms)/1000;long h=sec/3600;long m=(sec%3600)/60;long s=sec%60;return h>0?String.format(Locale.US,"%d%02d%02d",h,m,s):String.format(Locale.US,"%02d%02d",m,s);}
     private void toggleRun(Button button){
         long now=SystemClock.elapsedRealtime();
         if(manualMode){if(run)manualPosition+=(long)((now-manualStartedAt)*manualSpeed);manualStartedAt=now;}

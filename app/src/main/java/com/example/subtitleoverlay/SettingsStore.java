@@ -39,6 +39,10 @@ public final class SettingsStore {
     public static float manualSpeed(Context c){ return c.getSharedPreferences(PREF,0).getFloat("manual_speed",1f); }
     public static void manualSpeed(Context c,float v){ c.getSharedPreferences(PREF,0).edit().putFloat("manual_speed",clamp(v,0.25f,3f)).apply(); }
 
+    // Overlay control auto-hide: 0 = always visible, otherwise timeout in seconds.
+    public static int controlsAutoHide(Context c){ return c.getSharedPreferences(PREF,0).getInt("controls_auto_hide",3); }
+    public static void controlsAutoHide(Context c,int v){ c.getSharedPreferences(PREF,0).edit().putInt("controls_auto_hide",v==0?0:Math.max(1,Math.min(60,v))).apply(); }
+
     public static String primaryUri(Context c){ return c.getSharedPreferences(PREF,0).getString("primary_uri", ""); }
     public static void primaryUri(Context c,String v){ c.getSharedPreferences(PREF,0).edit().putString("primary_uri",v).apply(); }
     public static String secondaryUri(Context c){ return c.getSharedPreferences(PREF,0).getString("secondary_uri", ""); }
