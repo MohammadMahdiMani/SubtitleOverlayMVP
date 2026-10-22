@@ -135,7 +135,7 @@ public class OverlayService extends Service {
         switch(SettingsStore.position(this)){case 1:return (int)(H*.67f);case 2:return (int)(H*.45f);case 3:return (int)(H*.25f);case 4:return dp(42);default:return (int)(H*.82f);}
     }
     private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
-    private Button button(String s){
+    private TextView button(String s){
         Button b=new Button(this);b.setText(s);b.setTextSize(10);b.setMinHeight(1);b.setMinWidth(1);b.setAllCaps(false);b.setPadding(dp(7),0,dp(7),0);
         int base=buttonColor(s);
         GradientDrawable normal=shape(base), pressed=shape(blend(base,Color.WHITE,0.18f)), selected=shape(blend(base,Color.WHITE,0.28f)), focused=shape(blend(base,Color.WHITE,0.10f)), disabled=shape(Color.rgb(80,80,80));
@@ -159,9 +159,9 @@ public class OverlayService extends Service {
         if("Color".equals(s)||"BG".equals(s)||"Font".equals(s)||"Pos".equals(s))return Color.rgb(0,105,120);
         return Color.rgb(54,65,82);
     }
-    private void addToRow(LinearLayout row,Button b){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(34));p.setMargins(dp(3),dp(3),dp(3),dp(3));row.addView(b,p);}
+    private void addToRow(LinearLayout row,View b){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(34));p.setMargins(dp(3),dp(3),dp(3),dp(3));row.addView(b,p);}
     private Button add(LinearLayout row,String text,View.OnClickListener l){
-        Button b=button(text);b.setTag(text);
+        Button b=(Button)button(text);b.setTag(text);
         b.setOnClickListener(v->{for(int i=0;i<row.getChildCount();i++)row.getChildAt(i).setSelected(false);b.setSelected(true);l.onClick(v);if("Pause".equals(text)||"Play".equals(text))b.setSelected(run);});
         addToRow(row,b);return b;
     }
