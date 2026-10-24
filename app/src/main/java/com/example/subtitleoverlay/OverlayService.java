@@ -114,11 +114,14 @@ public class OverlayService extends Service {
         HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(false);
         LinearLayout rows=new LinearLayout(this);rows.setOrientation(LinearLayout.VERTICAL);rows.setPadding(dp(4),dp(2),dp(4),dp(2));
         LinearLayout design=new LinearLayout(this);design.setOrientation(LinearLayout.HORIZONTAL);
-        info=button("AUTO 00:00"); addToRow(design,info);
-        add(design,"A−",v->changeSize(-2));add(design,"A+",v->changeSize(2));add(design,"Color",v->cycleTextColor());add(design,"BG",v->cycleBg());add(design,"Font",v->cycleFont());add(design,"Pos",v->cyclePosition());
-        add(design,"BG Mode",v->cycleBgMode());add(design,"Pad",v->cycleBgPadding());add(design,"Opacity",v->cycleBgOpacity());
+        // Keep all subtitle appearance controls together in the Design row.
+        add(design,"A−",v->changeSize(-2));add(design,"A+",v->changeSize(2));
+        add(design,"Text Color",v->cycleTextColor());add(design,"BG Color",v->cycleBg());
+        add(design,"BG Type",v->cycleBgMode());add(design,"Position",v->cyclePosition());
+        add(design,"Font",v->cycleFont());add(design,"Padding",v->cycleBgPadding());add(design,"Opacity",v->cycleBgOpacity());
         LinearLayout timing=new LinearLayout(this);timing.setOrientation(LinearLayout.HORIZONTAL);
         add(timing,"Sync",v->showSyncDialog());
+        info=button("AUTO 00:00"); addToRow(timing,info);
         add(timing,run?"Pause":"Play",v->{toggleRun((Button)v);});
         hideButton=add(timing,hideLabel(),v->cycleAutoHide());
         add(timing,"✕",v->stopSelf());
@@ -156,7 +159,7 @@ public class OverlayService extends Service {
         if("Sync".equals(s))return Color.rgb(63,81,181);
         if("Play".equals(s)||"Pause".equals(s))return Color.rgb(0,121,87);
         if(s.startsWith("Hide")||s.startsWith("Always"))return Color.rgb(106,66,160);
-        if("Color".equals(s)||"BG".equals(s)||"Font".equals(s)||"Pos".equals(s))return Color.rgb(0,105,120);
+        if("Text Color".equals(s)||"BG Color".equals(s)||"BG Type".equals(s)||"Font".equals(s)||"Position".equals(s))return Color.rgb(0,105,120);
         return Color.rgb(54,65,82);
     }
     private void addToRow(LinearLayout row,View b){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-2,dp(34));p.setMargins(dp(3),dp(3),dp(3),dp(3));row.addView(b,p);}
